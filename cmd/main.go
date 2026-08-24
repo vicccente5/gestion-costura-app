@@ -1,73 +1,120 @@
 // Package main — punto de entrada de la aplicación Gestión Costura App.
-// En la Fase 1 solo levanta la conexión a la DB y ejecuta las migraciones.
-// El servidor HTTP se levanta en la Fase 2 (junto con auth y los primeros endpoints).
+// Responsabilidades de main:
+//   1. Cargar configuración
+//   2. Ejecutar migraciones
+//   3. Conectar a la DB
+//   4. Construir el árbol de dependencias (repository → service → handler → router)
+//   5. Levantar el servidor HTTP
+//
+// main.go es el único lugar donde se ensamblan las dependencias.
+// Esto implementa el patrón "Composition Root" — toda la inyección de dependencias
+// ocurre en un solo punto, manteniendo el resto del código desacoplado.
 package main
 
 import (
-	"fmt"
+	"context"
+	"errors"
+	"net/http"
 	"os"
+	"os/signal"
+	"syscall"
+	"time"
 
+	"github.com/gin-gonic/gin"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"github.com/vicccente5/gestion-costura-app/config"
+	"github.com/vicccente5/gestion-costura-app/internal/repository"
+	"github.com/vicccente5/gestion-costura-app/internal/router"
+	"github.com/vicccente5/gestion-costura-app/internal/service"
 )
 
 func main() {
 	// Configurar zerolog — salida legible en desarrollo, JSON en producción
-	// En Fase 7 se añade el middleware de logging de requests HTTP
 	zerolog.TimeFieldFormat = zerolog.TimeFormatUnix
 	log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr})
 
 	log.Info().Msg("🧵 Iniciando Gestión Costura App...")
 
-	// 1. Cargar configuración desde .env / variables de entorno
+	// 1. Cargar configuración desde .env
 	cfg, err := config.Load()
 	if err != nil {
 		log.Fatal().Err(err).Msg("Error cargando configuración")
 	}
 	log.Info().
 		Str("port", cfg.Server.Port).
-		Str("gin_mode", cfg.Server.GinMode).
-		Str("db_host", cfg.Database.Host).
-		Str("db_name", cfg.Database.Name).
+		Str("mode", cfg.Server.GinMode).
+		Str("db", cfg.Database.Name).
 		Msg("✅ Configuración cargada")
 
-	// 2. Ejecutar migraciones ANTES de abrir conexión GORM
-	// Esto garantiza que las tablas existen cuando los repositories las necesiten
-	log.Info().Msg("Ejecutando migraciones de base de datos...")
+	// 2. Ejecutar migraciones — ANTES de conectar GORM
+	log.Info().Msg("Ejecutando migraciones...")
 	if err := config.RunMigrations(cfg.Database.MigrateURL()); err != nil {
 		log.Fatal().Err(err).Msg("Error ejecutando migraciones")
 	}
 	log.Info().Msg("✅ Migraciones aplicadas")
 
-	// 3. Conectar a PostgreSQL con GORM
+	// 3. Conectar a PostgreSQL
 	db, err := config.NewDatabase(cfg.Database)
 	if err != nil {
-		log.Fatal().Err(err).Msg("Error conectando a la base de datos")
+		log.Fatal().Err(err).Msg("Error conectando a PostgreSQL")
 	}
-
-	// Obtener sql.DB subyacente para cerrar la conexión al salir
-	sqlDB, err := db.DB()
-	if err != nil {
-		log.Fatal().Err(err).Msg("Error obteniendo sql.DB")
-	}
+	sqlDB, _ := db.DB()
 	defer sqlDB.Close()
-
 	log.Info().Msg("✅ Conexión a PostgreSQL establecida")
 
-	// ============================================================
-	// Fase 1 completa — el servidor HTTP se levanta en Fase 2
-	// ============================================================
-	fmt.Printf("\n🎉 Base de datos lista. Tablas creadas con golang-migrate.\n")
-	fmt.Printf("   Conectar DBeaver a: %s:%s/%s\n",
-		cfg.Database.Host,
-		cfg.Database.Port,
-		cfg.Database.Name,
-	)
-	fmt.Printf("   El servidor HTTP se implementará en la Fase 2.\n\n")
+	// 4. Construir árbol de dependencias (Composition Root)
+	//    repository ← recibe *gorm.DB
+	//    service    ← recibe repository + config
+	userRepo := repository.NewUserRepository(db)
+	authSvc := service.NewAuthService(userRepo, cfg)
 
-	// Mantener la aplicación viva para verificar la conexión en Fase 1
-	// En Fase 2 esto se reemplaza por el servidor Gin
-	log.Info().Msg("Presiona Ctrl+C para salir")
-	select {} // Bloquear indefinidamente
+	clientRepo := repository.NewClientRepository(db)
+	clientSvc := service.NewClientService(clientRepo)
+
+	// 5. Configurar modo de Gin (debug en dev, release en prod)
+	gin.SetMode(cfg.Server.GinMode)
+
+	// 6. Configurar y arrancar el router
+	r := router.Setup(authSvc, clientSvc)
+
+	// 7. Servidor HTTP con Graceful Shutdown
+	//    Graceful Shutdown: al recibir SIGTERM/SIGINT, espera hasta 10 segundos
+	//    para que las peticiones activas terminen antes de apagar el servidor.
+	//    Sin esto, un `docker stop` mataría peticiones a la mitad.
+	srv := &http.Server{
+		Addr:         ":" + cfg.Server.Port,
+		Handler:      r,
+		ReadTimeout:  15 * time.Second,
+		WriteTimeout: 15 * time.Second,
+		IdleTimeout:  60 * time.Second,
+	}
+
+	// Levantar el servidor en una goroutine separada
+	go func() {
+		log.Info().
+			Str("addr", "http://localhost:"+cfg.Server.Port).
+			Msg("🚀 Servidor HTTP iniciado")
+
+		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			log.Fatal().Err(err).Msg("Error en el servidor HTTP")
+		}
+	}()
+
+	// Esperar señal de apagado (Ctrl+C o docker stop)
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+	<-quit
+
+	log.Info().Msg("Apagando el servidor...")
+
+	// Dar 10 segundos para que terminen las peticiones activas
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	if err := srv.Shutdown(ctx); err != nil {
+		log.Error().Err(err).Msg("Error durante el graceful shutdown")
+	}
+
+	log.Info().Msg("✅ Servidor detenido correctamente")
 }

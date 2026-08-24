@@ -64,3 +64,13 @@ type RefreshToken struct {
 	UserID uuid.UUID `gorm:"type:uuid;not null;index" json:"user_id"`
 	User   User      `gorm:"foreignKey:UserID" json:"-"`
 }
+
+// IsExpired retorna true si el refresh token ya superó su fecha de expiración.
+func (r *RefreshToken) IsExpired() bool {
+	return time.Now().After(r.ExpiresAt)
+}
+
+// IsRevoked retorna true si el token fue invalidado explícitamente (logout).
+func (r *RefreshToken) IsRevoked() bool {
+	return r.RevokedAt != nil
+}
