@@ -1,6 +1,6 @@
 # 🧵 Planificación Detallada por Fases — App Gestión de Taller de Costura
 
-> **v2.0 — Auditada y corregida.** 14 problemas identificados y corregidos. Ver tabla al final.
+> **v2.2 — Auditada y corregida.** 14 problemas identificados y corregidos. Fase 11 agregada. Blindaje de validaciones, integridad de datos y seguridad de auth añadidos en Fases 1, 2 y 3. Ver tabla al final.
 
 ---
 
@@ -45,7 +45,7 @@ Quiero construir el backend completo de una app móvil Flutter para gestión de 
 5. Flujo de Caja: campo source (manual/order) para evitar duplicados en balance
 6. Reportes: ganancias por período, materiales más usados, encargos más rentables
 
-**Requisitos Transversales:** golang-migrate (NO AutoMigrate), errores centralizados, validación con go-playground/validator, paginación, /api/v1/, Rate Limiting en login, CLP en enteros, tests unitarios en cada fase.
+**Requisitos Transversales:** golang-migrate (NO AutoMigrate), errores centralizados, validación con go-playground/validator, paginación, /api/v1/, Rate Limiting en login, CLP en enteros, tests unitarios en cada fase, índices UNIQUE en DB para evitar datos duplicados, mensajes de error genéricos en auth para no revelar información, sanitización de inputs (email a minúsculas, trim de espacios) antes de guardar en DB.
 
 **Metodología:** Fase a fase. NO avances hasta que yo lo indique. Código real, comentado y con decisiones explicadas. Al final de cada fase dime qué probar. Comienza con la Fase 1.
 
@@ -262,10 +262,45 @@ Quiero construir el backend completo de una app móvil Flutter para gestión de 
 > Si el costo del material cambia después, la rentabilidad histórica debe
 > usar el precio que tenía cuando se asignó, no el precio actual.
 
+**Restricciones e Índices de Integridad en las Migraciones — OBLIGATORIO:**
+
+> ⚠️ Estas restricciones se definen en el SQL de las migraciones, NO en el código Go.
+> La DB es la última línea de defensa contra datos duplicados o inválidos.
+
+- [ ] `000001_create_users.up.sql`:
+  - `email` → `UNIQUE` + `NOT NULL` + `CHECK (email ~* '^[^@]+@[^@]+\.[^@]+$')`
+  - `nombre` → `NOT NULL` + `CHECK (LENGTH(TRIM(nombre)) > 0)`
+  - `password_hash` → `NOT NULL`
+
+- [ ] `000002_create_clients.up.sql`:
+  - Índice `UNIQUE (user_id, email)` — el mismo email puede existir para distintos usuarios (dos costureras pueden tener la misma clienta), pero NO para el mismo usuario
+  - `nombre` → `NOT NULL` + `CHECK (LENGTH(TRIM(nombre)) > 0)`
+  - `email` → `CHECK (email IS NULL OR email ~* '^[^@]+@[^@]+\.[^@]+$')` (email de cliente es opcional)
+
+- [ ] `000003_create_materials.up.sql`:
+  - Índice `UNIQUE (user_id, nombre)` — no puede haber dos materiales con el mismo nombre para el mismo usuario
+  - `stock_actual` → `CHECK (stock_actual >= 0)` — stock nunca negativo
+  - `stock_minimo` → `CHECK (stock_minimo >= 0)`
+  - `costo_unitario` → `CHECK (costo_unitario >= 0)` — en enteros CLP
+
+- [ ] `000004_create_orders.up.sql`:
+  - `estado` → `CHECK (estado IN ('pendiente', 'en_progreso', 'completado', 'entregado'))`
+  - `precio_venta` → `CHECK (precio_venta >= 0)`
+  - `horas` → `CHECK (horas >= 0)`
+  - `tarifa_hora` → `CHECK (tarifa_hora >= 0)`
+
+- [ ] `000005_create_transactions.up.sql`:
+  - `tipo` → `CHECK (tipo IN ('ingreso', 'gasto'))`
+  - `source` → `CHECK (source IN ('manual', 'order'))`
+  - `monto` → `CHECK (monto > 0)` — un monto de 0 no tiene sentido como transacción
+  - Regla de consistencia: si `source = 'order'`, entonces `order_id` debe ser NOT NULL (se implementa como CHECK o trigger)
+
 **Checkpoint ✅**
 - go build ./... compila sin errores
 - docker-compose up -d levanta PostgreSQL
-- Las 7 tablas existen en DB con FK correctas
+- Las 7 tablas existen en DB con FK correctas y restricciones CHECK
+- Intentar insertar email duplicado en users → error de constraint UNIQUE
+- Intentar insertar stock negativo → error de constraint CHECK
 - .env NO aparece en git status
 
 **Errores a corregir antes de Fase 2:**
@@ -273,6 +308,7 @@ Quiero construir el backend completo de una app móvil Flutter para gestión de 
 - Precios como FLOAT en lugar de INTEGER
 - user_id faltante en alguna tabla
 - costo_unitario_snapshot faltante en OrderMaterial
+- Restricciones UNIQUE y CHECK faltantes en migraciones (dejan pasar datos inválidos)
 
 
 ---
@@ -305,8 +341,44 @@ Quiero construir el backend completo de una app móvil Flutter para gestión de 
 > Nunca confiar en un ID del body o URL sin cruzarlo con el JWT.
 > Ejemplo correcto: db.Where("id = ? AND user_id = ?", id, userID).First(&order)
 
+**Reglas de Validación — Registro (`POST /api/v1/auth/register`):**
+
+- [ ] Validaciones con `go-playground/validator` en el struct de entrada:
+  - `email`: tag `required,email` → formato válido obligatorio
+  - `password`: tag `required,min=8` → mínimo 8 caracteres
+  - `nombre`: tag `required,min=2,max=100` → no vacío, no solo espacios
+- [ ] **Sanitización antes de guardar:**
+  - Email → convertir a minúsculas (`strings.ToLower`) + trim de espacios antes de guardar y antes de buscar
+  - Nombre → trim de espacios en los extremos
+- [ ] **Verificar unicidad en el service** (antes de intentar insertar, para dar un error claro):
+  - Buscar si ya existe un usuario con ese email (ignorando mayúsculas)
+  - Si existe → retornar `409 Conflict` con mensaje: `"El correo electrónico ya está registrado"`
+  - ⚠️ Esta es la única situación donde se puede dar un mensaje específico porque el usuario aún no está autenticado y está registrándose intencionalmente
+
+**Reglas de Validación — Login (`POST /api/v1/auth/login`):**
+
+- [ ] **Mensaje de error SIEMPRE genérico:** si el email no existe O si la contraseña es incorrecta, la respuesta debe ser IDÉNTICA:
+  - `401 Unauthorized` + `{"error": "Credenciales inválidas"}` — nunca revelar cuál de los dos falló
+  - Razón: si el error distingue entre "email no encontrado" y "contraseña incorrecta", un atacante puede enumerar qué emails están registrados
+- [ ] **Protección contra timing attack:**
+  - Si el email NO existe: comparar igualmente contra un hash dummy (`bcrypt.CompareHashAndPassword`) para que el tiempo de respuesta sea igual al caso donde sí existe
+  - Sin esto, un atacante puede medir el tiempo de respuesta y saber si el email existe (bcrypt es lento, su ausencia es detectable)
+- [ ] Sanitizar email recibido (toLower + trim) antes de buscar en DB
+- [ ] Validar que `email` y `password` no estén vacíos antes de consultar la DB
+
+**Reglas de Validación — Refresh Token (`POST /api/v1/auth/refresh`):**
+
+- [ ] Verificar que el refresh token existe en la tabla `refresh_tokens` de la DB (no solo que sea un JWT válido)
+- [ ] Verificar que el refresh token NO ha sido marcado como revocado
+- [ ] Al emitir nuevo access token: NO reutilizar el mismo refresh token sin verificación
+- [ ] Un mismo refresh token usado dos veces simultáneamente → detectar y revocar ambos (Token Rotation con detección de reutilización)
+
 **Checkpoint ✅**
-- POST /register → crea usuario con password hasheada en DB
+- POST /register con email duplicado → 409 Conflict (no 500)
+- POST /register con email en mayúsculas → se guarda en minúsculas, no crea duplicado
+- POST /register con password de 7 caracteres → 400 con error de validación
+- POST /login con email inexistente → 401 "Credenciales inválidas" (no "usuario no encontrado")
+- POST /login con email correcto y password incorrecta → 401 "Credenciales inválidas" (mismo mensaje)
 - POST /login → devuelve access token (15min) + refresh token (7d)
 - POST /refresh → devuelve nuevo access token
 - POST /logout → refresh token queda inválido en DB
@@ -319,6 +391,8 @@ Quiero construir el backend completo de una app móvil Flutter para gestión de 
 - bcrypt cost < 12 (vulnerable a fuerza bruta)
 - CORS no configurado (falla desde Flutter)
 - Refresh token no guardado en DB (logout seguro imposible)
+- Mensaje de error de login que revela si el email existe o no
+- Email no sanitizado a minúsculas → mismo usuario puede registrarse con variantes de mayúsculas
 
 ---
 
@@ -339,15 +413,35 @@ Quiero construir el backend completo de una app móvil Flutter para gestión de 
   - GET /api/v1/clients/:id/orders — historial de encargos de un cliente
 - [ ] Tests unitarios de client_service.go
 
+**Reglas de Validación y Unicidad de Clientes:**
+
+- [ ] Validaciones con `go-playground/validator`:
+  - `nombre`: tag `required,min=2,max=150` — obligatorio
+  - `email`: tag `omitempty,email` — opcional, pero si se proporciona debe ser válido
+  - `telefono`: tag `omitempty,min=7,max=20` — opcional
+- [ ] **Sanitización antes de guardar:**
+  - Email → toLower + trim (si se proporciona)
+  - Nombre y teléfono → trim de espacios en los extremos
+- [ ] **Verificar unicidad de email por usuario en el service:**
+  - Al crear: si se proporciona email, verificar que no exista otro cliente con ese email para el mismo `user_id`
+  - Al editar: misma verificación, excluyendo el propio registro (`WHERE user_id = ? AND email = ? AND id != ?`)
+  - Si hay duplicado → `409 Conflict`: `"Ya tienes un cliente registrado con ese correo electrónico"`
+- [ ] **Al eliminar cliente:** verificar en el service que no tenga encargos en estado `pendiente` o `en_progreso` antes de eliminar → `409 Conflict` si los tiene
+
 **Checkpoint ✅**
 - CRUD completo funciona
+- POST /clients con email duplicado para el mismo usuario → 409 Conflict
+- POST /clients con email de otro usuario → se crea correctamente (la unicidad es por usuario)
+- POST /clients con email en mayúsculas → se guarda en minúsculas, no crea duplicado
 - No se puede eliminar cliente con encargos activos (retorna 409 Conflict)
+- Eliminar cliente sin encargos activos → elimina correctamente
 - Historial de encargos por cliente correcto
 - Un usuario NO puede ver clientes de otro usuario
 
 **Errores a corregir antes de Fase 4:**
-- No validar unicidad de email de cliente por usuario
-- Eliminar cliente con encargos sin avisar (pérdida de datos)
+- Unicidad de email de cliente no implementada (permite duplicados)
+- Email de cliente no sanitizado a minúsculas antes de guardar
+- Eliminar cliente con encargos activos sin verificación (pérdida de integridad referencial)
 
 ---
 
@@ -734,6 +828,153 @@ Quiero construir el backend completo de una app móvil Flutter para gestión de 
 
 ---
 
+### FASE 11 — Testing del Frontend, QA Visual y Preparación para Producción
+
+**Objetivo:** Completar la cobertura de calidad del frontend con el mismo rigor que el backend tuvo en la Fase 7. Verificar la consistencia visual, correr tests automatizados de Flutter y dejar la app lista para publicar en la Play Store.
+
+> Esta fase es el equivalente frontend de la Fase 7 (Testing + Logging + Calidad del backend).
+> La Fase 9 construyó la UI; esta fase la valida, la pule y la empaqueta.
+
+---
+
+**11A — Testing Automatizado de Flutter**
+
+- [ ] Agregar dependencias de testing en `pubspec.yaml`:
+  - `flutter_test` (incluido en Flutter SDK — tests de widgets)
+  - `integration_test` (incluido en Flutter SDK — tests de flujo completo)
+  - `mocktail` — mocks tipados para Riverpod providers y repositorios
+
+- [ ] **Widget tests** (tests de componentes aislados):
+  - LoginScreen: campos vacíos → error inline, campos válidos → llama al provider
+  - DashboardScreen: muestra tarjetas de resumen con datos mockeados
+  - OrderDetailScreen: `margen_porcentaje = null` → muestra texto amigable, NO crash
+  - MaterialListItem: badge rojo visible cuando `stock_actual <= stock_minimo`
+  - TransactionItem: color azul para source="manual", verde para source="order"
+
+- [ ] **Tests del interceptor JWT (dio)**:
+  - Request con token válido → pasa sin modificación
+  - Request con token expirado → interceptor llama a refresh automáticamente
+  - Refresh falla (token inválido) → redirige a login, limpia storage
+
+- [ ] **Tests de navegación (go_router)**:
+  - Ruta protegida sin JWT en storage → redirige a /login
+  - Ruta protegida con JWT válido → accede correctamente
+  - Logout → borra storage → redirige a /login
+
+- [ ] **Integration tests** (flujos completos en emulador):
+  - Flujo de login completo: ingresar credenciales → dashboard visible
+  - Flujo de creación de encargo: seleccionar cliente → agregar material → guardar
+  - Flujo de inventario: crear material → registrar compra → verificar stock actualizado
+
+- [ ] Correr todos los tests:
+  ```bash
+  # Widget tests
+  flutter test
+
+  # Integration tests (requiere emulador corriendo)
+  flutter test integration_test/
+  ```
+
+---
+
+**11B — QA Visual y Revisión del Design System**
+
+- [ ] **Revisión de consistencia visual** en todas las pantallas:
+  - Colores del tema (primario, secundario, error, superficie) aplicados uniformemente
+  - Tipografía consistente: no mezclar estilos de texto ad-hoc con los del tema
+  - Espaciados uniformes: verificar que se usan los valores del tema, no hardcodeados
+  - Íconos: solo Material Icons nativos (sin dependencias externas)
+
+- [ ] **Testing en múltiples tamaños de pantalla:**
+  - Pantalla pequeña (360×640 — Moto G)
+  - Pantalla media (390×844 — iPhone 14)
+  - Pantalla grande (412×915 — Pixel 7)
+  - Verificar que no hay overflow de texto ni widgets cortados
+
+- [ ] **Modo oscuro y modo claro:**
+  - Cambiar tema del sistema → la app responde sin reiniciarse
+  - Verificar contraste mínimo de texto en ambos modos (WCAG AA: ratio 4.5:1)
+  - No hay colores hardcodeados que rompan en modo oscuro (usar `Theme.of(context)`)
+
+- [ ] **Accesibilidad básica:**
+  - Botones con tamaño mínimo de 48×48 dp (Material Design guideline)
+  - Campos de texto con etiquetas descriptivas (para lectores de pantalla)
+  - Imágenes/íconos con `semanticLabel` donde sea necesario
+
+- [ ] **Estados de la UI** verificados en todas las pantallas:
+  - Loading state: skeleton o CircularProgressIndicator visible
+  - Empty state: ilustración + mensaje descriptivo (no pantalla en blanco)
+  - Error state: mensaje de error + botón de reintentar
+  - Success state: feedback visual claro al usuario
+
+- [ ] **Pull-to-refresh** funciona en todas las listas principales
+
+---
+
+**11C — Preparación para Producción (Play Store)**
+
+- [ ] **Versioning de la app** en `pubspec.yaml`:
+  ```yaml
+  version: 1.0.0+1  # nombre_versión+código_versión
+  ```
+  - `1.0.0` → versionName (visible al usuario en la Play Store)
+  - `+1` → versionCode (número entero que incrementa con cada subida)
+
+- [ ] **Íconos de app finales:**
+  - Icono de alta resolución (1024×1024 px, sin transparencia para Android)
+  - Generar todos los tamaños con: `flutter pub run flutter_launcher_icons`
+  - Splash screen nativo configurado con `flutter_native_splash`
+
+- [ ] **Firma del APK/AAB** (Android App Bundle):
+  - Generar keystore (UNA SOLA VEZ — guardarlo fuera del repositorio):
+    ```bash
+    keytool -genkey -v -keystore costura-release.jks \
+      -keyalg RSA -keysize 2048 -validity 10000 \
+      -alias costura-key
+    ```
+  - Configurar `android/key.properties` (NO commitear — agregar a .gitignore)
+  - Build firmado:
+    ```bash
+    flutter build appbundle --release  # .aab para Play Store
+    flutter build apk --release        # .apk para instalación directa
+    ```
+
+- [ ] **Ofuscación obligatoria en release:**
+  ```bash
+  flutter build appbundle --obfuscate --split-debug-info=./debug-info/
+  ```
+  - Guardar los archivos `debug-info/` para poder leer stack traces de crashes en producción
+
+- [ ] **Assets de la Play Store:**
+  - Capturas de pantalla en alta resolución (mínimo 2, recomendado 4-8)
+  - Ícono de feature (1024×500 px)
+  - Descripción corta (80 caracteres máximo)
+  - Descripción larga (4000 caracteres máximo)
+
+- [ ] **Verificaciones finales antes de publicar:**
+  - `flutter analyze` sin warnings ni errores
+  - `grep -rn "print\|debugPrint" lib/` → cero resultados (no loguear datos en producción)
+  - URL base apunta a producción (`--dart-define=BASE_URL=https://tudominio.com`)
+  - Certificado TLS válido en el servidor de producción
+
+**Checkpoint ✅**
+- `flutter test` pasa sin errores → cobertura de widgets críticos
+- Integration tests pasan en emulador Android
+- `margen_porcentaje = null` → texto amigable en pantalla, no crash en ningún dispositivo
+- App funciona correctamente en pantallas pequeñas (360px) y grandes (412px)
+- Modo oscuro y claro sin elementos hardcodeados
+- `flutter build appbundle --release --obfuscate` genera el .aab sin errores
+- `.jks` y `key.properties` NO aparecen en `git status`
+- `flutter analyze` sin errores
+
+**Errores a corregir:**
+- Overflow en pantallas pequeñas → envolver con `Flexible` o `Expanded`
+- Colores hardcodeados que rompen en modo oscuro → reemplazar con `Theme.of(context).colorScheme`
+- `print()` en código de producción → eliminar o reemplazar con logger condicional
+- Keystore commiteado por error → rotar claves inmediatamente y eliminar del historial de Git
+
+---
+
 ## 📊 Resumen del Roadmap
 
 ```
@@ -757,6 +998,8 @@ Fase 9  → Frontend Flutter (URL por entorno, interceptor JWT, UI completa)
     ↓ (verificar: app conecta al backend, flujos completos, null safety en margen)
 Fase 10 → Endurecimiento de Seguridad (Public Key Pinning, IDOR audit, HTTPS)
     ↓ (verificar: OWASP ZAP, rate limit, logout seguro, APK ofuscado)
+Fase 11 → Testing Flutter + QA Visual + Preparación Play Store
+    ↓ (verificar: widget tests pasan, responsive OK, .aab firmado y ofuscado)
 ```
 
 ---
