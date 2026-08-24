@@ -1,0 +1,61 @@
+# docker-compose.prod.yml — PRODUCCIÓN
+# Solo el binario compilado de Go + PostgreSQL
+# Sin puertos de DB expuestos al exterior (seguridad)
+# Uso: docker-compose -f docker-compose.prod.yml up -d
+
+services:
+  # API Backend (binario Go compilado en multi-stage build)
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: costura_api_prod
+    restart: always
+    environment:
+      SERVER_PORT: ${SERVER_PORT:-8080}
+      GIN_MODE: release
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+      DB_NAME: ${DB_NAME}
+      DB_SSLMODE: ${DB_SSLMODE:-require}
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_ACCESS_EXPIRY_MINUTES: ${JWT_ACCESS_EXPIRY_MINUTES:-15}
+      JWT_REFRESH_EXPIRY_DAYS: ${JWT_REFRESH_EXPIRY_DAYS:-7}
+    ports:
+      # Solo el puerto de la API expuesto — nunca el de la DB
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - costura_network
+
+  # Base de datos PostgreSQL
+  postgres:
+    image: postgres:16-alpine
+    container_name: costura_db_prod
+    restart: always
+    environment:
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: ${DB_NAME}
+    # ⚠️ SIN "ports:" — la DB no es accesible desde fuera del servidor
+    volumes:
+      - postgres_prod_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - costura_network
+
+networks:
+  costura_network:
+    driver: bridge
+
+volumes:
+  postgres_prod_data:
+    driver: local

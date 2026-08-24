@@ -1,0 +1,43 @@
+# Variables de entorno — NUNCA commitear
+.env
+.env.local
+.env.*.local
+
+# Binario compilado de Go
+/costura-app
+/bin/
+
+# Dependencias de Go (se regeneran con go mod download)
+vendor/
+
+# Caché de Go
+.cache/
+
+# Archivos de cobertura de tests
+coverage.out
+coverage.html
+
+# Archivos de debug de Flutter (ofuscación)
+debug-info/
+
+# Keystore de Android — NUNCA commitear
+*.jks
+*.keystore
+android/key.properties
+
+# IDE
+.vscode/settings.json
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+air.log
+
+# Swagger generado (se regenera con swag init)
+docs/

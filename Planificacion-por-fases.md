@@ -1,6 +1,6 @@
 # 🧵 Planificación Detallada por Fases — App Gestión de Taller de Costura
 
-> **v2.2 — Auditada y corregida.** 14 problemas identificados y corregidos. Fase 11 agregada. Blindaje de validaciones, integridad de datos y seguridad de auth añadidos en Fases 1, 2 y 3. Ver tabla al final.
+> **v2.3 — Auditada y corregida.** 14 problemas identificados y corregidos. Fases 11 y 12 agregadas. Blindaje de validaciones en Fases 1, 2 y 3. Ver tabla al final.
 
 ---
 
@@ -975,6 +975,151 @@ Quiero construir el backend completo de una app móvil Flutter para gestión de 
 
 ---
 
+### FASE 12 — Monetización: Activación del Modelo de Suscripción
+
+**Objetivo:** Convertir la app de completamente gratuita a un modelo de suscripción mensual/anual, sin afectar a los usuarios existentes. Esta fase se ejecuta SOLO cuando la app esté publicada, funcionando bien y con una base de usuarios activos que justifique el cobro.
+
+> Esta fase es condicional — no tiene fecha fija.
+> Se activa cuando se cumplan las condiciones de negocio definidas en el checkpoint de decisión.
+> La app funciona 100% gratis hasta que se active esta fase.
+
+---
+
+**Checkpoint de Decisión — ¿Cuándo activar esta fase?**
+
+Antes de empezar la implementación, verificar que se cumplen estas condiciones:
+- [ ] La app lleva al menos 2-3 meses publicada y estable
+- [ ] Hay al menos 50-100 usuarias activas (usan la app al menos 1 vez por semana)
+- [ ] El feedback de las usuarias es positivo y la app les genera valor real
+- [ ] El costo del servidor justifica el cobro (cuando Neon gratis ya no alcanza)
+- [ ] Se tiene un método de pago disponible para recibir suscripciones
+
+---
+
+**12A — Backend: Infraestructura de Suscripciones**
+
+- [ ] Nueva migración `000006_add_subscription_to_users.up.sql`:
+  ```sql
+  ALTER TABLE users ADD COLUMN plan VARCHAR(10) NOT NULL DEFAULT 'free'
+      CONSTRAINT users_plan_valid CHECK (plan IN ('free', 'pro'));
+  ALTER TABLE users ADD COLUMN subscription_status VARCHAR(20) DEFAULT NULL
+      CONSTRAINT users_sub_status_valid
+      CHECK (subscription_status IN ('active', 'cancelled', 'past_due', 'trialing'));
+  ALTER TABLE users ADD COLUMN subscription_end_date TIMESTAMPTZ DEFAULT NULL;
+  ALTER TABLE users ADD COLUMN trial_end_date TIMESTAMPTZ DEFAULT NULL;
+  ```
+  > ⚠️ Los usuarios existentes quedan automáticamente en plan 'free' — sin pérdida de datos
+
+- [ ] Integración con proveedor de pagos:
+  - **MercadoPago** (recomendado para Chile/Latinoamérica — soporta tarjetas locales y transferencias)
+  - **Stripe** (alternativa internacional — mejor para tarjetas de crédito internacionales)
+  - Crear cuenta de desarrollador y obtener API keys
+
+- [ ] internal/domain/subscription.go — modelo de suscripción y planes:
+  ```go
+  const (
+      PlanFree = "free"  // Sin costo, acceso completo durante fase de crecimiento
+      PlanPro  = "pro"   // Suscripción mensual/anual
+  )
+  ```
+
+- [ ] internal/service/subscription_service.go:
+  - Crear suscripción (redirige al proveedor de pago)
+  - Verificar estado de suscripción activa
+  - Cancelar suscripción
+  - Manejar webhook de pago exitoso → activar plan Pro
+  - Manejar webhook de pago fallido → cambiar a `past_due`, enviar email de aviso
+  - Manejar webhook de cancelación → mantener acceso hasta `subscription_end_date`
+
+- [ ] internal/handler/subscription_handler.go:
+  - POST /api/v1/subscription/checkout — genera URL de pago
+  - GET  /api/v1/subscription/status — devuelve plan y fecha de vencimiento
+  - POST /api/v1/subscription/cancel — cancela (mantiene acceso hasta fin del período)
+  - POST /api/v1/subscription/webhook — recibe eventos del proveedor de pago
+
+- [ ] internal/middleware/plan_middleware.go:
+  - Middleware que verifica si el usuario puede acceder a funciones Pro
+  - En la Fase 12 inicial: NO bloquear acceso (período de gracia para usuarios existentes)
+  - En versiones futuras: limitar funciones según plan
+
+> ⚠️ DECISIÓN IMPORTANTE — Qué funciones limitar en plan Free:
+> Opción A: Límite de cantidad (ej: máx. 5 clientes, 15 encargos activos)
+> Opción B: Límite de tiempo (free por 6 meses, luego pagar)
+> Opción C: Funciones avanzadas bloqueadas (reportes, exportar datos)
+> Esta decisión se toma ANTES de implementar el middleware de planes.
+
+---
+
+**12B — Precios y Planes**
+
+- [ ] Definir precios finales basados en el mercado real observado:
+  - **Plan Pro Mensual:** ~$4-6 USD/mes (equivalente en CLP al tipo de cambio del momento)
+  - **Plan Pro Anual:** ~$35-50 USD/año (descuento ~30% vs mensual)
+  - Ofrecer período de prueba de 14 días del plan Pro
+
+- [ ] Política de usuarios existentes (gratuitos antes de la Fase 12):
+  - Opción recomendada: **período de gracia de 60-90 días** para usuarios existentes
+  - Durante ese período: acceso completo sin pago, con aviso de que pronto será de pago
+  - Nunca cortar el acceso de golpe — genera mala reputación
+
+- [ ] Página de precios dentro de la app (pantalla en Flutter)
+
+---
+
+**12C — Frontend Flutter: Pantallas de Suscripción**
+
+- [ ] Pantalla de planes y precios:
+  - Comparativa visual: Free vs Pro
+  - Botón de suscribirse → abre WebView o browser con checkout del proveedor de pago
+  - Mostrar precio en CLP (convertido automáticamente si se usa USD)
+
+- [ ] Banner de upgrade en la app:
+  - Aparece sutilmente en el dashboard cuando el usuario está en plan Free
+  - NO intrusivo — no bloquear el uso de la app con popups agresivos
+
+- [ ] Pantalla de gestión de suscripción:
+  - Ver plan activo y fecha de renovación
+  - Botón para cancelar (con confirmación y mensaje de cuándo pierde acceso)
+  - Historial de pagos
+
+- [ ] Manejo de estados en la app:
+  - Plan Free activo → badge sutil "Free" en el perfil
+  - Plan Pro activo → badge "Pro" con fecha de renovación
+  - Suscripción vencida → pantalla amigable con opción de renovar (no bloqueo abrupto)
+
+---
+
+**12D — Comunicación con Usuarias**
+
+- [ ] Emails automáticos (configurados en el backend con un servicio como Resend o SendGrid):
+  - Bienvenida al plan Pro → confirmar activación
+  - 7 días antes de renovación → recordatorio
+  - Pago fallido → aviso con link para actualizar método de pago
+  - Cancelación confirmada → agradecer y recordar hasta cuándo tienen acceso
+  - Período de gracia terminando → último aviso antes de restricciones
+
+- [ ] Notificación push (opcional, usar Firebase Cloud Messaging):
+  - Solo para eventos críticos (pago fallido, suscripción por vencer)
+
+---
+
+**Checkpoint ✅**
+- Usuario nuevo se registra → queda en plan `free` automáticamente
+- Flujo de pago completo: usuario hace clic en "Suscribirse" → paga → plan cambia a `pro` en DB
+- Webhook de pago exitoso → actualiza `plan`, `subscription_status` y `subscription_end_date`
+- Cancelación → mantiene acceso Pro hasta `subscription_end_date`, luego pasa a `free`
+- Pago fallido → status `past_due`, email de aviso, acceso mantenido por período de gracia
+- Usuarios existentes no pierden acceso durante período de gracia
+- `flutter analyze` sin errores en pantallas nuevas
+
+**Condiciones para considerar esta fase exitosa:**
+- Al menos un pago real procesado correctamente
+- Ningún usuario perdió datos por el cambio de plan
+- Tasa de conversión de Free → Pro medida y registrada
+- Sistema de webhooks probado con eventos reales del proveedor de pago
+
+---
+
 ## 📊 Resumen del Roadmap
 
 ```
@@ -1000,6 +1145,8 @@ Fase 10 → Endurecimiento de Seguridad (Public Key Pinning, IDOR audit, HTTPS)
     ↓ (verificar: OWASP ZAP, rate limit, logout seguro, APK ofuscado)
 Fase 11 → Testing Flutter + QA Visual + Preparación Play Store
     ↓ (verificar: widget tests pasan, responsive OK, .aab firmado y ofuscado)
+Fase 12 → Monetización: Suscripción Pro (CONDICIONAL — solo cuando haya usuarios reales)
+    ↓ (verificar: pago procesado, usuarios existentes sin pérdida de acceso, webhook OK)
 ```
 
 ---

@@ -1,0 +1,29 @@
+# docker-compose.yml — DESARROLLO
+# PostgreSQL + Air (hot reload) para desarrollo local
+# Uso: docker-compose up -d
+
+services:
+  # Base de datos PostgreSQL
+  postgres:
+    image: postgres:16-alpine
+    container_name: costura_db_dev
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${DB_USER:-costura_user}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-costura_password_dev}
+      POSTGRES_DB: ${DB_NAME:-costura_db}
+    ports:
+      # Puerto expuesto al host para conectar con DBeaver/TablePlus durante desarrollo
+      - "5432:5432"
+    volumes:
+      # Volumen persistente: los datos sobreviven a docker-compose down
+      - postgres_dev_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-costura_user} -d ${DB_NAME:-costura_db}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres_dev_data:
+    driver: local

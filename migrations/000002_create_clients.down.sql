@@ -1,0 +1,2 @@
+-- Migración 000002 — ROLLBACK
+DROP TABLE IF EXISTS clients;
