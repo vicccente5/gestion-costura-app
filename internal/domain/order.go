@@ -18,6 +18,7 @@ const (
 	OrderStatusEnProgreso  OrderStatus = "en_progreso"
 	OrderStatusCompletado  OrderStatus = "completado"
 	OrderStatusEntregado   OrderStatus = "entregado" // Al llegar aquí se genera la Transaction automática
+	OrderStatusCancelado   OrderStatus = "cancelado" // Estado terminal — restaura stock si aplica
 )
 
 // Order representa un trabajo o encargo de costura.

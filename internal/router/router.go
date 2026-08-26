@@ -13,7 +13,7 @@ import (
 
 // Setup configura el router Gin con todos los middlewares globales y rutas.
 // Recibe los servicios por inyección de dependencias.
-func Setup(authSvc service.AuthService, clientSvc service.ClientService) *gin.Engine {
+func Setup(authSvc service.AuthService, clientSvc service.ClientService, materialSvc service.MaterialService) *gin.Engine {
 	// Crear el engine de Gin (ya sin el logger de Gin — usamos zerolog en main)
 	r := gin.New()
 	r.Use(gin.Recovery()) // Recupera panics y retorna 500 en lugar de crashear
@@ -21,6 +21,7 @@ func Setup(authSvc service.AuthService, clientSvc service.ClientService) *gin.En
 	// Inicializar handlers
 	authHandler := handler.NewAuthHandler(authSvc)
 	clientHandler := handler.NewClientHandler(clientSvc)
+	materialHandler := handler.NewMaterialHandler(materialSvc)
 
 	// Rate limiter para login — instancia única compartida entre todos los workers de Gin
 	loginLimiter := middleware.LoginRateLimiter()
@@ -77,8 +78,21 @@ func Setup(authSvc service.AuthService, clientSvc service.ClientService) *gin.En
 			clients.GET("/:id/orders", clientHandler.GetOrders)
 		}
 
-		// Módulos de Fases 4-8 se agregan aquí progresivamente:
-		// materials := protected.Group("/materials")
+		// Módulo de Materiales (Fase 4)
+		// ⚠️ low-stock ANTES de /:id para que Gin no lo interprete como un UUID
+		materials := protected.Group("/materials")
+		{
+			materials.GET("", materialHandler.GetAll)
+			materials.POST("", materialHandler.Create)
+			materials.GET("/alerts/low-stock", materialHandler.GetLowStock)
+			materials.GET("/:id", materialHandler.GetByID)
+			materials.PUT("/:id", materialHandler.Update)
+			materials.DELETE("/:id", materialHandler.Delete)
+			materials.POST("/:id/purchases", materialHandler.RegisterPurchase)
+			materials.GET("/:id/purchases", materialHandler.GetPurchases)
+		}
+
+		// Módulos de Fases 5-8 se agregan aquí progresivamente:
 		// orders := protected.Group("/orders")
 		// transactions := protected.Group("/transactions")
 	}
