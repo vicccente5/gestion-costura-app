@@ -1,4 +1,4 @@
-﻿<div align="center">
+<div align="center">
 
 # 🧵 Gestión Costura App
 
@@ -174,48 +174,81 @@ La aplicación fue diseñada con seguridad en todas sus capas desde el primer d�
 
 ## 🚀 Instalación y Desarrollo
 
-> La guía completa de instalación estará disponible una vez que el proyecto esté en su versión estable.
-
 ### Requisitos previos
 - Go 1.21+
-- Flutter 3.16+ (con Dart 3.2+)
 - Docker y Docker Compose
-- Android Studio (para emulador Android)
+- Flutter 3.16+ (con Dart 3.2+) para el cliente móvil
 
-### Levantar el entorno de desarrollo
+### Variables de Entorno (.env)
+Crea un archivo `.env` en la raíz del proyecto basado en `.env.example`:
+```env
+SERVER_PORT=8080
+GIN_MODE=debug
+DB_HOST=localhost
+DB_PORT=5432
+DB_USER=postgres
+DB_PASSWORD=secret
+DB_NAME=costuradb
+DB_SSLMODE=disable
+JWT_SECRET=supersecretkey
+JWT_ACCESS_EXPIRY_MINUTES=15
+JWT_REFRESH_EXPIRY_DAYS=7
+```
+
+### Levantar el entorno de Desarrollo (con Hot Reload)
+Utilizamos `docker-compose.yml` para levantar la base de datos, y recomendamos usar `air` para compilar automáticamente los cambios de Go.
+
 ```bash
-# Clonar el repositorio
-git clone https://github.com/tu-usuario/gestion-costura-app.git
-cd gestion-costura-app
-
-# Levantar la base de datos con Docker
+# 1. Levantar solo la base de datos en Docker
 docker-compose up -d
 
-# Correr las migraciones
-migrate -path ./migrations -database $DATABASE_URL up
+# 2. Descargar dependencias
+go mod download
 
-# Iniciar el servidor backend
+# 3. Correr la aplicación localmente (las migraciones se ejecutan solas al iniciar)
 go run cmd/main.go
 
-# En otra terminal, correr la app Flutter
-cd costura_app
-flutter run
+# Alternativa: Usar Air para Hot Reload
+go install github.com/air-verse/air@latest
+air
 ```
+
+### Documentación de la API (Swagger)
+La API está documentada usando Swagger. Una vez que el servidor esté corriendo, visita:
+👉 **[http://localhost:8080/swagger/index.html](http://localhost:8080/swagger/index.html)**
+
+Para regenerar la documentación si cambias los handlers:
+```bash
+go run github.com/swaggo/swag/cmd/swag@latest init -g cmd/main.go --parseDependency --parseInternal
+```
+
+### Levantar el entorno de Producción
+El entorno de producción utiliza un Dockerfile multi-stage sumamente liviano y asegura la aplicación detrás de Nginx como proxy inverso. No se expone el puerto de la base de datos.
+
+```bash
+# Compilar y levantar los contenedores de producción en segundo plano
+docker-compose -f docker-compose.prod.yml up -d --build
+```
+La API estará disponible en el puerto `80` a través de Nginx.
+
+---
+
+## 🛤 Estrategia de Versionado de API
+
+La API sigue una estrategia de versionado mediante la ruta (URL path versioning).
+
+- **`GET /api/version`**: Endpoint de utilidad para el frontend. Retorna la versión actual de la API y la versión mínima requerida de la aplicación móvil compatible.
+- **Rutas `/api/v1/*`**: Toda la funcionalidad actual se encuentra bajo `v1`.
+- **Evolución a `v2`**: Cuando se requieran **cambios que rompan compatibilidad** (breaking changes) en los payloads, se creará un grupo `/api/v2/*` mientras se mantiene funcionando `v1`. De este modo, los clientes con versiones antiguas de la app no dejarán de funcionar repentinamente hasta que decidas descontinuar `v1` por completo.
 
 ---
 
 ## 📋 Roadmap del Proyecto
 
 - [x] Planificación y diseño de arquitectura
-- [ ] **Fase 0:** Configuración del entorno de desarrollo
-- [ ] **Fase 1:** Arquitectura del proyecto y modelos de datos
-- [ ] **Fase 2:** Autenticación JWT
-- [ ] **Fase 3:** Módulo de clientes
-- [ ] **Fase 4:** Módulo de inventario
-- [ ] **Fase 5:** Módulo de encargos
-- [ ] **Fase 6:** Flujo de caja y reportes
-- [ ] **Fase 7:** Testing y calidad de código
-- [ ] **Fase 8:** Despliegue y documentación API
+- [x] **Fase 0 a 6:** Core (Auth, Clientes, Inventario, Encargos, Flujo de Caja)
+- [x] **Fase 7:** Testing y calidad de código
+- [x] **Fase 8:** Despliegue y documentación API (Swagger, Docker Multi-stage, Nginx)
 - [ ] **Fase 9:** Desarrollo del frontend Flutter
 - [ ] **Fase 10:** Endurecimiento de seguridad
 

@@ -43,7 +43,18 @@ type transactionUpdateRequest struct {
 }
 
 // Create godoc
-// POST /api/v1/transactions
+// @Summary      Crear transacción manual
+// @Description  Registra un ingreso o gasto manual. No vinculada a encargos o compras de materiales.
+// @Tags         transactions
+// @Accept       json
+// @Produce      json
+// @Param        request body transactionCreateRequest true "Datos de la transacción"
+// @Security     BearerAuth
+// @Success      201  {object}  map[string]interface{}
+// @Failure      400  {object}  map[string]interface{}
+// @Failure      401  {object}  map[string]interface{}
+// @Failure      500  {object}  map[string]interface{}
+// @Router       /transactions [post]
 func (h *TransactionHandler) Create(c *gin.Context) {
 	userID := middleware.GetUserID(c)
 
@@ -86,7 +97,22 @@ func (h *TransactionHandler) Create(c *gin.Context) {
 }
 
 // GetAll godoc
-// GET /api/v1/transactions?tipo=ingreso&source=manual&categoria=arriendo&desde=2024-01-01&hasta=2024-12-31
+// @Summary      Listar transacciones
+// @Description  Obtiene la lista de transacciones con soporte para filtrado y paginación.
+// @Tags         transactions
+// @Produce      json
+// @Param        page      query     int     false  "Página"
+// @Param        limit     query     int     false  "Límite"
+// @Param        tipo      query     string  false  "Filtro por tipo (ingreso, gasto)"
+// @Param        source    query     string  false  "Filtro por fuente (manual, order, material)"
+// @Param        categoria query     string  false  "Filtro por categoría"
+// @Param        desde     query     string  false  "Fecha inicio (YYYY-MM-DD)"
+// @Param        hasta     query     string  false  "Fecha fin (YYYY-MM-DD)"
+// @Security     BearerAuth
+// @Success      200  {object}  map[string]interface{}
+// @Failure      401  {object}  map[string]interface{}
+// @Failure      500  {object}  map[string]interface{}
+// @Router       /transactions [get]
 func (h *TransactionHandler) GetAll(c *gin.Context) {
 	userID := middleware.GetUserID(c)
 	params := utils.GetPaginationParams(c)
@@ -121,7 +147,18 @@ func (h *TransactionHandler) GetAll(c *gin.Context) {
 }
 
 // GetByID godoc
-// GET /api/v1/transactions/:id
+// @Summary      Obtener transacción por ID
+// @Description  Retorna los detalles de una transacción específica.
+// @Tags         transactions
+// @Produce      json
+// @Param        id   path      string  true  "ID de la transacción (UUID)"
+// @Security     BearerAuth
+// @Success      200  {object}  map[string]interface{}
+// @Failure      400  {object}  map[string]interface{}
+// @Failure      401  {object}  map[string]interface{}
+// @Failure      404  {object}  map[string]interface{}
+// @Failure      500  {object}  map[string]interface{}
+// @Router       /transactions/{id} [get]
 func (h *TransactionHandler) GetByID(c *gin.Context) {
 	userID := middleware.GetUserID(c)
 
@@ -144,7 +181,21 @@ func (h *TransactionHandler) GetByID(c *gin.Context) {
 }
 
 // Update godoc
-// PUT /api/v1/transactions/:id
+// @Summary      Actualizar transacción manual
+// @Description  Actualiza datos de una transacción manual.
+// @Tags         transactions
+// @Accept       json
+// @Produce      json
+// @Param        id      path      string                   true  "ID de la transacción (UUID)"
+// @Param        request body      transactionUpdateRequest true  "Nuevos datos"
+// @Security     BearerAuth
+// @Success      200  {object}  map[string]interface{}
+// @Failure      400  {object}  map[string]interface{}
+// @Failure      401  {object}  map[string]interface{}
+// @Failure      404  {object}  map[string]interface{}
+// @Failure      409  {object}  map[string]interface{}
+// @Failure      500  {object}  map[string]interface{}
+// @Router       /transactions/{id} [put]
 func (h *TransactionHandler) Update(c *gin.Context) {
 	userID := middleware.GetUserID(c)
 
@@ -195,7 +246,19 @@ func (h *TransactionHandler) Update(c *gin.Context) {
 }
 
 // Delete godoc
-// DELETE /api/v1/transactions/:id
+// @Summary      Eliminar transacción manual
+// @Description  Elimina una transacción manual (las automáticas no se pueden eliminar por esta vía).
+// @Tags         transactions
+// @Produce      json
+// @Param        id   path      string  true  "ID de la transacción (UUID)"
+// @Security     BearerAuth
+// @Success      200  {object}  map[string]interface{}
+// @Failure      400  {object}  map[string]interface{}
+// @Failure      401  {object}  map[string]interface{}
+// @Failure      404  {object}  map[string]interface{}
+// @Failure      409  {object}  map[string]interface{}
+// @Failure      500  {object}  map[string]interface{}
+// @Router       /transactions/{id} [delete]
 func (h *TransactionHandler) Delete(c *gin.Context) {
 	userID := middleware.GetUserID(c)
 
@@ -220,8 +283,17 @@ func (h *TransactionHandler) Delete(c *gin.Context) {
 }
 
 // GetBalance godoc
-// GET /api/v1/transactions/balance?month=2024-09
-// Si no se pasa month, usa el mes actual.
+// @Summary      Obtener balance mensual
+// @Description  Calcula los ingresos, gastos y ganancia neta para un mes específico.
+// @Tags         transactions
+// @Produce      json
+// @Param        month  query     string  false  "Mes (YYYY-MM). Por defecto, mes actual."
+// @Security     BearerAuth
+// @Success      200  {object}  map[string]interface{}
+// @Failure      400  {object}  map[string]interface{}
+// @Failure      401  {object}  map[string]interface{}
+// @Failure      500  {object}  map[string]interface{}
+// @Router       /transactions/balance [get]
 func (h *TransactionHandler) GetBalance(c *gin.Context) {
 	userID := middleware.GetUserID(c)
 
@@ -262,7 +334,15 @@ func NewReportHandler(reportSvc service.ReportService, txSvc service.Transaction
 }
 
 // GetSummary godoc
-// GET /api/v1/reports/summary
+// @Summary      Resumen general
+// @Description  Retorna KPIs principales: encargos activos, ingresos del mes, materiales bajos, etc.
+// @Tags         reports
+// @Produce      json
+// @Security     BearerAuth
+// @Success      200  {object}  map[string]interface{}
+// @Failure      401  {object}  map[string]interface{}
+// @Failure      500  {object}  map[string]interface{}
+// @Router       /reports/summary [get]
 func (h *ReportHandler) GetSummary(c *gin.Context) {
 	userID := middleware.GetUserID(c)
 
@@ -276,7 +356,17 @@ func (h *ReportHandler) GetSummary(c *gin.Context) {
 }
 
 // GetEarnings godoc
-// GET /api/v1/reports/earnings?year=2025
+// @Summary      Ingresos anuales
+// @Description  Retorna los ingresos desglosados por mes para un año determinado.
+// @Tags         reports
+// @Produce      json
+// @Param        year  query     int  false  "Año (ej: 2024). Por defecto, año actual."
+// @Security     BearerAuth
+// @Success      200  {object}  map[string]interface{}
+// @Failure      400  {object}  map[string]interface{}
+// @Failure      401  {object}  map[string]interface{}
+// @Failure      500  {object}  map[string]interface{}
+// @Router       /reports/earnings [get]
 func (h *ReportHandler) GetEarnings(c *gin.Context) {
 	userID := middleware.GetUserID(c)
 
@@ -300,7 +390,16 @@ func (h *ReportHandler) GetEarnings(c *gin.Context) {
 }
 
 // GetTopMaterials godoc
-// GET /api/v1/reports/top-materials?limit=10
+// @Summary      Materiales más usados
+// @Description  Retorna los materiales más utilizados en encargos.
+// @Tags         reports
+// @Produce      json
+// @Param        limit  query     int  false  "Límite de resultados (default 10)"
+// @Security     BearerAuth
+// @Success      200  {object}  map[string]interface{}
+// @Failure      401  {object}  map[string]interface{}
+// @Failure      500  {object}  map[string]interface{}
+// @Router       /reports/top-materials [get]
 func (h *ReportHandler) GetTopMaterials(c *gin.Context) {
 	userID := middleware.GetUserID(c)
 
@@ -321,7 +420,16 @@ func (h *ReportHandler) GetTopMaterials(c *gin.Context) {
 }
 
 // GetTopOrders godoc
-// GET /api/v1/reports/top-orders?limit=10
+// @Summary      Encargos más rentables
+// @Description  Retorna los encargos completados/entregados con mayor rentabilidad.
+// @Tags         reports
+// @Produce      json
+// @Param        limit  query     int  false  "Límite de resultados (default 10)"
+// @Security     BearerAuth
+// @Success      200  {object}  map[string]interface{}
+// @Failure      401  {object}  map[string]interface{}
+// @Failure      500  {object}  map[string]interface{}
+// @Router       /reports/top-orders [get]
 func (h *ReportHandler) GetTopOrders(c *gin.Context) {
 	userID := middleware.GetUserID(c)
 

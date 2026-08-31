@@ -29,7 +29,19 @@ type clientRequest struct {
 }
 
 // Create godoc
-// POST /api/v1/clients
+// @Summary      Crear cliente
+// @Description  Crea un nuevo cliente para la costurera autenticada.
+// @Tags         clients
+// @Accept       json
+// @Produce      json
+// @Param        request body clientRequest true "Datos del cliente"
+// @Security     BearerAuth
+// @Success      201  {object}  map[string]interface{}
+// @Failure      400  {object}  map[string]interface{}
+// @Failure      401  {object}  map[string]interface{}
+// @Failure      409  {object}  map[string]interface{}
+// @Failure      500  {object}  map[string]interface{}
+// @Router       /clients [post]
 func (h *ClientHandler) Create(c *gin.Context) {
 	userID := middleware.GetUserID(c)
 
@@ -63,7 +75,18 @@ func (h *ClientHandler) Create(c *gin.Context) {
 }
 
 // GetAll godoc
-// GET /api/v1/clients?page=1&limit=20&search=ana
+// @Summary      Listar clientes
+// @Description  Obtiene la lista de clientes paginada y permite búsqueda por nombre.
+// @Tags         clients
+// @Produce      json
+// @Param        page    query     int     false  "Página"
+// @Param        limit   query     int     false  "Límite"
+// @Param        search  query     string  false  "Búsqueda por nombre"
+// @Security     BearerAuth
+// @Success      200  {object}  map[string]interface{}
+// @Failure      401  {object}  map[string]interface{}
+// @Failure      500  {object}  map[string]interface{}
+// @Router       /clients [get]
 func (h *ClientHandler) GetAll(c *gin.Context) {
 	userID := middleware.GetUserID(c)
 	params := utils.GetPaginationParams(c)
@@ -78,7 +101,18 @@ func (h *ClientHandler) GetAll(c *gin.Context) {
 }
 
 // GetByID godoc
-// GET /api/v1/clients/:id
+// @Summary      Obtener cliente por ID
+// @Description  Retorna los detalles de un cliente específico.
+// @Tags         clients
+// @Produce      json
+// @Param        id   path      string  true  "ID del cliente (UUID)"
+// @Security     BearerAuth
+// @Success      200  {object}  map[string]interface{}
+// @Failure      400  {object}  map[string]interface{}
+// @Failure      401  {object}  map[string]interface{}
+// @Failure      404  {object}  map[string]interface{}
+// @Failure      500  {object}  map[string]interface{}
+// @Router       /clients/{id} [get]
 func (h *ClientHandler) GetByID(c *gin.Context) {
 	userID := middleware.GetUserID(c)
 
@@ -101,7 +135,21 @@ func (h *ClientHandler) GetByID(c *gin.Context) {
 }
 
 // Update godoc
-// PUT /api/v1/clients/:id
+// @Summary      Actualizar cliente
+// @Description  Actualiza los datos de un cliente existente.
+// @Tags         clients
+// @Accept       json
+// @Produce      json
+// @Param        id      path      string         true  "ID del cliente (UUID)"
+// @Param        request body      clientRequest  true  "Nuevos datos del cliente"
+// @Security     BearerAuth
+// @Success      200  {object}  map[string]interface{}
+// @Failure      400  {object}  map[string]interface{}
+// @Failure      401  {object}  map[string]interface{}
+// @Failure      404  {object}  map[string]interface{}
+// @Failure      409  {object}  map[string]interface{}
+// @Failure      500  {object}  map[string]interface{}
+// @Router       /clients/{id} [put]
 func (h *ClientHandler) Update(c *gin.Context) {
 	userID := middleware.GetUserID(c)
 
@@ -144,7 +192,19 @@ func (h *ClientHandler) Update(c *gin.Context) {
 }
 
 // Delete godoc
-// DELETE /api/v1/clients/:id
+// @Summary      Eliminar cliente
+// @Description  Elimina un cliente. Retorna error si el cliente tiene encargos activos.
+// @Tags         clients
+// @Produce      json
+// @Param        id   path      string  true  "ID del cliente (UUID)"
+// @Security     BearerAuth
+// @Success      200  {object}  map[string]interface{}
+// @Failure      400  {object}  map[string]interface{}
+// @Failure      401  {object}  map[string]interface{}
+// @Failure      404  {object}  map[string]interface{}
+// @Failure      409  {object}  map[string]interface{}
+// @Failure      500  {object}  map[string]interface{}
+// @Router       /clients/{id} [delete]
 func (h *ClientHandler) Delete(c *gin.Context) {
 	userID := middleware.GetUserID(c)
 
@@ -170,7 +230,18 @@ func (h *ClientHandler) Delete(c *gin.Context) {
 }
 
 // GetOrders godoc
-// GET /api/v1/clients/:id/orders
+// @Summary      Historial de encargos de cliente
+// @Description  Retorna la lista de encargos asociados a este cliente.
+// @Tags         clients
+// @Produce      json
+// @Param        id   path      string  true  "ID del cliente (UUID)"
+// @Security     BearerAuth
+// @Success      200  {object}  map[string]interface{}
+// @Failure      400  {object}  map[string]interface{}
+// @Failure      401  {object}  map[string]interface{}
+// @Failure      404  {object}  map[string]interface{}
+// @Failure      500  {object}  map[string]interface{}
+// @Router       /clients/{id}/orders [get]
 func (h *ClientHandler) GetOrders(c *gin.Context) {
 	userID := middleware.GetUserID(c)
 

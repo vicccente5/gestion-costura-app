@@ -9,6 +9,20 @@
 // main.go es el único lugar donde se ensamblan las dependencias.
 // Esto implementa el patrón "Composition Root" — toda la inyección de dependencias
 // ocurre en un solo punto, manteniendo el resto del código desacoplado.
+// @title           Gestión Costura API
+// @version         1.0
+// @description     API REST para aplicación móvil de Gestión de Taller de Costura.
+// @termsOfService  http://swagger.io/terms/
+
+// @contact.name   API Support
+// @contact.email  vicente@example.com
+
+// @host      localhost:8080
+// @BasePath  /api/v1
+
+// @securityDefinitions.apikey BearerAuth
+// @in header
+// @name Authorization
 package main
 
 import (
@@ -19,6 +33,8 @@ import (
 	"os/signal"
 	"syscall"
 	"time"
+
+	_ "github.com/vicccente5/gestion-costura-app/docs"
 
 	"github.com/gin-gonic/gin"
 	"github.com/rs/zerolog"

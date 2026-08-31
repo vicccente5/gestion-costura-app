@@ -47,7 +47,19 @@ type purchaseRequest struct {
 }
 
 // Create godoc
-// POST /api/v1/materials
+// @Summary      Crear material
+// @Description  Crea un nuevo material en el inventario.
+// @Tags         materials
+// @Accept       json
+// @Produce      json
+// @Param        request body materialCreateRequest true "Datos del material"
+// @Security     BearerAuth
+// @Success      201  {object}  map[string]interface{}
+// @Failure      400  {object}  map[string]interface{}
+// @Failure      401  {object}  map[string]interface{}
+// @Failure      409  {object}  map[string]interface{}
+// @Failure      500  {object}  map[string]interface{}
+// @Router       /materials [post]
 func (h *MaterialHandler) Create(c *gin.Context) {
 	userID := middleware.GetUserID(c)
 
@@ -81,7 +93,19 @@ func (h *MaterialHandler) Create(c *gin.Context) {
 }
 
 // GetAll godoc
-// GET /api/v1/materials?page=1&limit=20&search=tela&categoria=tela
+// @Summary      Listar materiales
+// @Description  Obtiene la lista de materiales. Permite filtrado por búsqueda y categoría.
+// @Tags         materials
+// @Produce      json
+// @Param        page      query     int     false  "Página"
+// @Param        limit     query     int     false  "Límite"
+// @Param        search    query     string  false  "Búsqueda por nombre"
+// @Param        categoria query     string  false  "Filtro por categoría"
+// @Security     BearerAuth
+// @Success      200  {object}  map[string]interface{}
+// @Failure      401  {object}  map[string]interface{}
+// @Failure      500  {object}  map[string]interface{}
+// @Router       /materials [get]
 func (h *MaterialHandler) GetAll(c *gin.Context) {
 	userID := middleware.GetUserID(c)
 	params := utils.GetPaginationParams(c)
@@ -97,9 +121,15 @@ func (h *MaterialHandler) GetAll(c *gin.Context) {
 }
 
 // GetLowStock godoc
-// GET /api/v1/materials/alerts/low-stock
-// ⚠️ IMPORTANTE: esta ruta debe registrarse ANTES de /:id en Gin
-// para evitar que Gin la interprete como un ID con valor "alerts".
+// @Summary      Alertas de stock bajo
+// @Description  Retorna materiales cuyo stock actual es menor o igual al stock mínimo.
+// @Tags         materials
+// @Produce      json
+// @Security     BearerAuth
+// @Success      200  {object}  map[string]interface{}
+// @Failure      401  {object}  map[string]interface{}
+// @Failure      500  {object}  map[string]interface{}
+// @Router       /materials/alerts/low-stock [get]
 func (h *MaterialHandler) GetLowStock(c *gin.Context) {
 	userID := middleware.GetUserID(c)
 
@@ -116,7 +146,18 @@ func (h *MaterialHandler) GetLowStock(c *gin.Context) {
 }
 
 // GetByID godoc
-// GET /api/v1/materials/:id
+// @Summary      Obtener material por ID
+// @Description  Retorna los detalles de un material específico.
+// @Tags         materials
+// @Produce      json
+// @Param        id   path      string  true  "ID del material (UUID)"
+// @Security     BearerAuth
+// @Success      200  {object}  map[string]interface{}
+// @Failure      400  {object}  map[string]interface{}
+// @Failure      401  {object}  map[string]interface{}
+// @Failure      404  {object}  map[string]interface{}
+// @Failure      500  {object}  map[string]interface{}
+// @Router       /materials/{id} [get]
 func (h *MaterialHandler) GetByID(c *gin.Context) {
 	userID := middleware.GetUserID(c)
 
@@ -139,7 +180,21 @@ func (h *MaterialHandler) GetByID(c *gin.Context) {
 }
 
 // Update godoc
-// PUT /api/v1/materials/:id
+// @Summary      Actualizar material
+// @Description  Actualiza metadatos del material (nombre, categoría, unidad, stock mínimo).
+// @Tags         materials
+// @Accept       json
+// @Produce      json
+// @Param        id      path      string               true  "ID del material (UUID)"
+// @Param        request body      materialUpdateRequest true "Nuevos datos del material"
+// @Security     BearerAuth
+// @Success      200  {object}  map[string]interface{}
+// @Failure      400  {object}  map[string]interface{}
+// @Failure      401  {object}  map[string]interface{}
+// @Failure      404  {object}  map[string]interface{}
+// @Failure      409  {object}  map[string]interface{}
+// @Failure      500  {object}  map[string]interface{}
+// @Router       /materials/{id} [put]
 func (h *MaterialHandler) Update(c *gin.Context) {
 	userID := middleware.GetUserID(c)
 
@@ -181,7 +236,19 @@ func (h *MaterialHandler) Update(c *gin.Context) {
 }
 
 // Delete godoc
-// DELETE /api/v1/materials/:id
+// @Summary      Eliminar material
+// @Description  Elimina un material del inventario si no está en uso.
+// @Tags         materials
+// @Produce      json
+// @Param        id   path      string  true  "ID del material (UUID)"
+// @Security     BearerAuth
+// @Success      200  {object}  map[string]interface{}
+// @Failure      400  {object}  map[string]interface{}
+// @Failure      401  {object}  map[string]interface{}
+// @Failure      404  {object}  map[string]interface{}
+// @Failure      409  {object}  map[string]interface{}
+// @Failure      500  {object}  map[string]interface{}
+// @Router       /materials/{id} [delete]
 func (h *MaterialHandler) Delete(c *gin.Context) {
 	userID := middleware.GetUserID(c)
 
@@ -207,7 +274,20 @@ func (h *MaterialHandler) Delete(c *gin.Context) {
 }
 
 // RegisterPurchase godoc
-// POST /api/v1/materials/:id/purchases
+// @Summary      Registrar compra
+// @Description  Registra la compra de un material. Actualiza el stock y recalcula el costo unitario por promedio ponderado.
+// @Tags         materials
+// @Accept       json
+// @Produce      json
+// @Param        id      path      string           true  "ID del material (UUID)"
+// @Param        request body      purchaseRequest  true  "Datos de la compra"
+// @Security     BearerAuth
+// @Success      201  {object}  map[string]interface{}
+// @Failure      400  {object}  map[string]interface{}
+// @Failure      401  {object}  map[string]interface{}
+// @Failure      404  {object}  map[string]interface{}
+// @Failure      500  {object}  map[string]interface{}
+// @Router       /materials/{id}/purchases [post]
 func (h *MaterialHandler) RegisterPurchase(c *gin.Context) {
 	userID := middleware.GetUserID(c)
 
@@ -262,7 +342,18 @@ func (h *MaterialHandler) RegisterPurchase(c *gin.Context) {
 }
 
 // GetPurchases godoc
-// GET /api/v1/materials/:id/purchases
+// @Summary      Historial de compras
+// @Description  Retorna la lista de compras registradas para un material específico.
+// @Tags         materials
+// @Produce      json
+// @Param        id   path      string  true  "ID del material (UUID)"
+// @Security     BearerAuth
+// @Success      200  {object}  map[string]interface{}
+// @Failure      400  {object}  map[string]interface{}
+// @Failure      401  {object}  map[string]interface{}
+// @Failure      404  {object}  map[string]interface{}
+// @Failure      500  {object}  map[string]interface{}
+// @Router       /materials/{id}/purchases [get]
 func (h *MaterialHandler) GetPurchases(c *gin.Context) {
 	userID := middleware.GetUserID(c)
 

@@ -9,6 +9,9 @@ import (
 	"github.com/vicccente5/gestion-costura-app/internal/middleware"
 	"github.com/vicccente5/gestion-costura-app/internal/service"
 	"github.com/vicccente5/gestion-costura-app/internal/utils"
+
+	swaggerFiles "github.com/swaggo/files"
+	ginSwagger "github.com/swaggo/gin-swagger"
 )
 
 // Setup configura el router Gin con todos los middlewares globales y rutas.
@@ -39,23 +42,30 @@ func Setup(
 	loginLimiter := middleware.LoginRateLimiter()
 
 	// ──────────────────────────────────────────────────────────
-	// RUTAS PÚBLICAS — Sin autenticación requerida
+	// RUTAS RAÍZ Y PÚBLICAS
 	// ──────────────────────────────────────────────────────────
-	public := r.Group("/api/v1")
+
+	// Health check — para monitoreo del servidor y docker healthcheck
+	r.GET("/health", func(c *gin.Context) {
+		utils.OK(c, "OK", nil)
+	})
+
+	// Swagger UI
+	r.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
+
+	api := r.Group("/api")
 	{
-		// Información de la versión — útil para el cliente Flutter saber con qué versión habla
-		public.GET("/version", func(c *gin.Context) {
-			utils.OK(c, "API funcionando", gin.H{
-				"version": "1.0.0",
-				"name":    "Gestión Costura API",
+		// Información de la versión — útil para el cliente Flutter
+		api.GET("/version", func(c *gin.Context) {
+			utils.OK(c, "Version info", gin.H{
+				"api_version":     "1.0.0",
+				"min_app_version": "1.0.0",
 			})
 		})
+	}
 
-		// Health check — para monitoreo del servidor y docker healthcheck
-		public.GET("/health", func(c *gin.Context) {
-			utils.OK(c, "OK", nil)
-		})
-
+	public := r.Group("/api/v1")
+	{
 		// Autenticación — rutas públicas
 		auth := public.Group("/auth")
 		{

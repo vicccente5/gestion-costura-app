@@ -618,24 +618,23 @@ Quiero construir el backend completo de una app móvil Flutter para gestión de 
 
 ---
 
-### FASE 8 — Despliegue y Documentación
+### FASE 8 — Despliegue y Documentación [COMPLETADA]
 
 **Objetivo:** Backend listo para producción con Docker separado por entorno, documentación y estrategia de versionado.
 
 **Entregables:**
-- [ ] Dockerfile con multi-stage build (build Go + runtime Alpine mínimo)
-- [ ] docker-compose.yml — DESARROLLO: PostgreSQL + Air, puertos expuestos para debug
-- [ ] docker-compose.prod.yml — PRODUCCIÓN: solo binario + DB + volúmenes persistentes, SIN puertos innecesarios
-- [ ] Documentación de la API con swaggo/swag (Swagger/OpenAPI)
-- [ ] README.md completo (instalación dev y prod, cómo correr migraciones, variables de entorno)
-- [ ] GET /health — health check (público, sin auth)
-- [ ] GET /api/version — versión de la API y versión mínima de app compatible:
+- [x] Dockerfile con multi-stage build (build Go + runtime Alpine mínimo)
+- [x] docker-compose.prod.yml — PRODUCCIÓN: solo binario + DB + volúmenes persistentes, SIN puertos innecesarios
+- [x] Nginx como proxy inverso con HTTPS
+- [x] Documentación de la API con swaggo/swag (Swagger/OpenAPI)
+- [x] README.md completo (instalación dev y prod, cómo correr migraciones, variables de entorno)
+- [x] GET /health — health check (público, sin auth)
+- [x] GET /api/version — versión de la API y versión mínima de app compatible:
   { "api_version": "1.0.0", "min_app_version": "1.0.0" }
-- [ ] Estrategia de versionado: mantener /api/v1/ funcional al introducir /api/v2/
-- [ ] Nginx como proxy inverso con HTTPS
+- [x] Estrategia de versionado: mantener /api/v1/ funcional al introducir /api/v2/
 
 **Checkpoint ✅**
-- docker-compose up (dev) levanta todo sin errores
+- docker-compose -f docker-compose.prod.yml build levanta todo sin errores
 - docker-compose -f docker-compose.prod.yml up (prod) levanta todo
 - Swagger accesible en /swagger/index.html
 - GET /health responde 200 desde fuera del contenedor

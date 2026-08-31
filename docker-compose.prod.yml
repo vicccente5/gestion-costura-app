@@ -23,12 +23,24 @@ services:
       JWT_SECRET: ${JWT_SECRET}
       JWT_ACCESS_EXPIRY_MINUTES: ${JWT_ACCESS_EXPIRY_MINUTES:-15}
       JWT_REFRESH_EXPIRY_DAYS: ${JWT_REFRESH_EXPIRY_DAYS:-7}
-    ports:
-      # Solo el puerto de la API expuesto — nunca el de la DB
-      - "8080:8080"
+    # SIN "ports:" — la API no es accesible directamente, solo a través de Nginx
     depends_on:
       postgres:
         condition: service_healthy
+    networks:
+      - costura_network
+
+  # Nginx como reverse proxy
+  nginx:
+    image: nginx:alpine
+    container_name: costura_nginx_prod
+    restart: always
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - api
     networks:
       - costura_network
 

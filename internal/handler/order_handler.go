@@ -62,7 +62,20 @@ type editMaterialQuantityRequest struct {
 }
 
 // Create godoc
-// POST /api/v1/orders
+// @Summary      Crear encargo
+// @Description  Crea un nuevo encargo, asignando materiales si es necesario.
+// @Tags         orders
+// @Accept       json
+// @Produce      json
+// @Param        request body orderCreateRequest true "Datos del encargo"
+// @Security     BearerAuth
+// @Success      201  {object}  map[string]interface{}
+// @Failure      400  {object}  map[string]interface{}
+// @Failure      401  {object}  map[string]interface{}
+// @Failure      404  {object}  map[string]interface{}
+// @Failure      409  {object}  map[string]interface{}
+// @Failure      500  {object}  map[string]interface{}
+// @Router       /orders [post]
 func (h *OrderHandler) Create(c *gin.Context) {
 	userID := middleware.GetUserID(c)
 
@@ -135,7 +148,18 @@ func (h *OrderHandler) Create(c *gin.Context) {
 }
 
 // GetAll godoc
-// GET /api/v1/orders?page=1&limit=20&estado=pendiente&search=vestido
+// @Summary      Listar encargos
+// @Description  Obtiene la lista de encargos. Permite filtrado por estado.
+// @Tags         orders
+// @Produce      json
+// @Param        page    query     int     false  "Página"
+// @Param        limit   query     int     false  "Límite"
+// @Param        estado  query     string  false  "Filtro por estado (ej: pendiente, en_progreso)"
+// @Security     BearerAuth
+// @Success      200  {object}  map[string]interface{}
+// @Failure      401  {object}  map[string]interface{}
+// @Failure      500  {object}  map[string]interface{}
+// @Router       /orders [get]
 func (h *OrderHandler) GetAll(c *gin.Context) {
 	userID := middleware.GetUserID(c)
 	params := utils.GetPaginationParams(c)
@@ -151,7 +175,18 @@ func (h *OrderHandler) GetAll(c *gin.Context) {
 }
 
 // GetByID godoc
-// GET /api/v1/orders/:id
+// @Summary      Obtener encargo por ID
+// @Description  Retorna los detalles de un encargo, incluyendo sus materiales y rentabilidad.
+// @Tags         orders
+// @Produce      json
+// @Param        id   path      string  true  "ID del encargo (UUID)"
+// @Security     BearerAuth
+// @Success      200  {object}  map[string]interface{}
+// @Failure      400  {object}  map[string]interface{}
+// @Failure      401  {object}  map[string]interface{}
+// @Failure      404  {object}  map[string]interface{}
+// @Failure      500  {object}  map[string]interface{}
+// @Router       /orders/{id} [get]
 func (h *OrderHandler) GetByID(c *gin.Context) {
 	userID := middleware.GetUserID(c)
 
@@ -174,7 +209,21 @@ func (h *OrderHandler) GetByID(c *gin.Context) {
 }
 
 // UpdateMetadata godoc
-// PUT /api/v1/orders/:id
+// @Summary      Actualizar metadatos del encargo
+// @Description  Actualiza datos generales del encargo. Solo permitido si el estado es 'pendiente'.
+// @Tags         orders
+// @Accept       json
+// @Produce      json
+// @Param        id      path      string              true  "ID del encargo (UUID)"
+// @Param        request body      orderUpdateRequest  true  "Nuevos datos"
+// @Security     BearerAuth
+// @Success      200  {object}  map[string]interface{}
+// @Failure      400  {object}  map[string]interface{}
+// @Failure      401  {object}  map[string]interface{}
+// @Failure      404  {object}  map[string]interface{}
+// @Failure      409  {object}  map[string]interface{}
+// @Failure      500  {object}  map[string]interface{}
+// @Router       /orders/{id} [put]
 func (h *OrderHandler) UpdateMetadata(c *gin.Context) {
 	userID := middleware.GetUserID(c)
 
@@ -227,7 +276,21 @@ func (h *OrderHandler) UpdateMetadata(c *gin.Context) {
 }
 
 // ChangeStatus godoc
-// PATCH /api/v1/orders/:id/status
+// @Summary      Cambiar estado de encargo
+// @Description  Avanza o retrocede el estado del encargo. Genera transacción si pasa a 'entregado'.
+// @Tags         orders
+// @Accept       json
+// @Produce      json
+// @Param        id      path      string               true  "ID del encargo (UUID)"
+// @Param        request body      statusChangeRequest  true  "Nuevo estado"
+// @Security     BearerAuth
+// @Success      200  {object}  map[string]interface{}
+// @Failure      400  {object}  map[string]interface{}
+// @Failure      401  {object}  map[string]interface{}
+// @Failure      404  {object}  map[string]interface{}
+// @Failure      409  {object}  map[string]interface{}
+// @Failure      500  {object}  map[string]interface{}
+// @Router       /orders/{id}/status [patch]
 func (h *OrderHandler) ChangeStatus(c *gin.Context) {
 	userID := middleware.GetUserID(c)
 
@@ -275,7 +338,19 @@ func (h *OrderHandler) ChangeStatus(c *gin.Context) {
 }
 
 // Delete godoc
-// DELETE /api/v1/orders/:id
+// @Summary      Eliminar encargo
+// @Description  Elimina el encargo y repone los materiales al stock.
+// @Tags         orders
+// @Produce      json
+// @Param        id   path      string  true  "ID del encargo (UUID)"
+// @Security     BearerAuth
+// @Success      200  {object}  map[string]interface{}
+// @Failure      400  {object}  map[string]interface{}
+// @Failure      401  {object}  map[string]interface{}
+// @Failure      404  {object}  map[string]interface{}
+// @Failure      409  {object}  map[string]interface{}
+// @Failure      500  {object}  map[string]interface{}
+// @Router       /orders/{id} [delete]
 func (h *OrderHandler) Delete(c *gin.Context) {
 	userID := middleware.GetUserID(c)
 
@@ -300,7 +375,21 @@ func (h *OrderHandler) Delete(c *gin.Context) {
 }
 
 // AddMaterial godoc
-// POST /api/v1/orders/:id/materials
+// @Summary      Asignar material a encargo
+// @Description  Añade un material al encargo y descuenta del stock. Solo si está 'pendiente' o 'en_progreso'.
+// @Tags         orders
+// @Accept       json
+// @Produce      json
+// @Param        id      path      string                true  "ID del encargo (UUID)"
+// @Param        request body      orderMaterialRequest  true  "Material a asignar"
+// @Security     BearerAuth
+// @Success      201  {object}  map[string]interface{}
+// @Failure      400  {object}  map[string]interface{}
+// @Failure      401  {object}  map[string]interface{}
+// @Failure      404  {object}  map[string]interface{}
+// @Failure      409  {object}  map[string]interface{}
+// @Failure      500  {object}  map[string]interface{}
+// @Router       /orders/{id}/materials [post]
 func (h *OrderHandler) AddMaterial(c *gin.Context) {
 	userID := middleware.GetUserID(c)
 
@@ -349,7 +438,22 @@ func (h *OrderHandler) AddMaterial(c *gin.Context) {
 }
 
 // EditMaterialQuantity godoc
-// PUT /api/v1/orders/:id/materials/:mid
+// @Summary      Editar cantidad de material
+// @Description  Modifica la cantidad usada de un material en un encargo, ajustando el stock acorde.
+// @Tags         orders
+// @Accept       json
+// @Produce      json
+// @Param        id    path      string                       true  "ID del encargo (UUID)"
+// @Param        mid   path      string                       true  "ID del OrderMaterial (UUID)"
+// @Param        request body    editMaterialQuantityRequest  true  "Nueva cantidad"
+// @Security     BearerAuth
+// @Success      200  {object}  map[string]interface{}
+// @Failure      400  {object}  map[string]interface{}
+// @Failure      401  {object}  map[string]interface{}
+// @Failure      404  {object}  map[string]interface{}
+// @Failure      409  {object}  map[string]interface{}
+// @Failure      500  {object}  map[string]interface{}
+// @Router       /orders/{id}/materials/{mid} [put]
 func (h *OrderHandler) EditMaterialQuantity(c *gin.Context) {
 	userID := middleware.GetUserID(c)
 
@@ -391,7 +495,20 @@ func (h *OrderHandler) EditMaterialQuantity(c *gin.Context) {
 }
 
 // RemoveMaterial godoc
-// DELETE /api/v1/orders/:id/materials/:mid
+// @Summary      Quitar material de encargo
+// @Description  Elimina el material del encargo y devuelve la cantidad usada al stock principal.
+// @Tags         orders
+// @Produce      json
+// @Param        id    path      string  true  "ID del encargo (UUID)"
+// @Param        mid   path      string  true  "ID del OrderMaterial (UUID)"
+// @Security     BearerAuth
+// @Success      200  {object}  map[string]interface{}
+// @Failure      400  {object}  map[string]interface{}
+// @Failure      401  {object}  map[string]interface{}
+// @Failure      404  {object}  map[string]interface{}
+// @Failure      409  {object}  map[string]interface{}
+// @Failure      500  {object}  map[string]interface{}
+// @Router       /orders/{id}/materials/{mid} [delete]
 func (h *OrderHandler) RemoveMaterial(c *gin.Context) {
 	userID := middleware.GetUserID(c)
 

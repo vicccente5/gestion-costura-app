@@ -32,8 +32,17 @@ type registerRequest struct {
 }
 
 // Register godoc
-// POST /api/v1/auth/register
-// Crea una nueva cuenta de costurera.
+// @Summary      Registrar usuaria
+// @Description  Crea una nueva cuenta de costurera.
+// @Tags         auth
+// @Accept       json
+// @Produce      json
+// @Param        request body registerRequest true "Datos de registro"
+// @Success      201  {object}  map[string]interface{}
+// @Failure      400  {object}  map[string]interface{}
+// @Failure      409  {object}  map[string]interface{}
+// @Failure      500  {object}  map[string]interface{}
+// @Router       /auth/register [post]
 func (h *AuthHandler) Register(c *gin.Context) {
 	var req registerRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -73,8 +82,17 @@ type loginRequest struct {
 }
 
 // Login godoc
-// POST /api/v1/auth/login
-// Autentica a una costurera y retorna access + refresh tokens.
+// @Summary      Iniciar sesión
+// @Description  Autentica a una costurera y retorna access + refresh tokens.
+// @Tags         auth
+// @Accept       json
+// @Produce      json
+// @Param        request body loginRequest true "Credenciales"
+// @Success      200  {object}  map[string]interface{}
+// @Failure      400  {object}  map[string]interface{}
+// @Failure      401  {object}  map[string]interface{}
+// @Failure      500  {object}  map[string]interface{}
+// @Router       /auth/login [post]
 func (h *AuthHandler) Login(c *gin.Context) {
 	var req loginRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -110,8 +128,17 @@ type refreshRequest struct {
 }
 
 // Refresh godoc
-// POST /api/v1/auth/refresh
-// Genera un nuevo access token usando el refresh token (Token Rotation).
+// @Summary      Renovar access token
+// @Description  Genera un nuevo access token usando el refresh token (Token Rotation).
+// @Tags         auth
+// @Accept       json
+// @Produce      json
+// @Param        request body refreshRequest true "Refresh Token"
+// @Success      200  {object}  map[string]interface{}
+// @Failure      400  {object}  map[string]interface{}
+// @Failure      401  {object}  map[string]interface{}
+// @Failure      500  {object}  map[string]interface{}
+// @Router       /auth/refresh [post]
 func (h *AuthHandler) Refresh(c *gin.Context) {
 	var req refreshRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -143,8 +170,15 @@ type logoutRequest struct {
 }
 
 // Logout godoc
-// POST /api/v1/auth/logout
-// Invalida el refresh token en la DB. El access token expira naturalmente (15 min máx).
+// @Summary      Cerrar sesión
+// @Description  Invalida el refresh token en la DB.
+// @Tags         auth
+// @Accept       json
+// @Produce      json
+// @Param        request body logoutRequest true "Refresh Token"
+// @Success      200  {object}  map[string]interface{}
+// @Failure      400  {object}  map[string]interface{}
+// @Router       /auth/logout [post]
 func (h *AuthHandler) Logout(c *gin.Context) {
 	var req logoutRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
