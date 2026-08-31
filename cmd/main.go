@@ -75,11 +75,19 @@ func main() {
 	materialRepo := repository.NewMaterialRepository(db)
 	materialSvc := service.NewMaterialService(materialRepo)
 
+	orderRepo := repository.NewOrderRepository(db)
+	orderSvc := service.NewOrderService(orderRepo, clientRepo, materialRepo)
+
+	txRepo := repository.NewTransactionRepository(db)
+	txSvc := service.NewTransactionService(txRepo)
+
+	reportSvc := service.NewReportService(db)
+
 	// 5. Configurar modo de Gin (debug en dev, release en prod)
 	gin.SetMode(cfg.Server.GinMode)
 
 	// 6. Configurar y arrancar el router
-	r := router.Setup(authSvc, clientSvc, materialSvc)
+	r := router.Setup(authSvc, clientSvc, materialSvc, orderSvc, txSvc, reportSvc)
 
 	// 7. Servidor HTTP con Graceful Shutdown
 	//    Graceful Shutdown: al recibir SIGTERM/SIGINT, espera hasta 10 segundos

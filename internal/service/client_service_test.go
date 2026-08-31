@@ -231,3 +231,98 @@ func TestClientDelete_NotFound(t *testing.T) {
 // ──────────────────────────────────────────────
 
 func strPtr(s string) *string { return &s }
+
+func TestClient_GetByID_OK(t *testing.T) {
+	ctx := context.Background()
+	userID := uuid.New()
+	clientID := uuid.New()
+
+	mockRepo := new(MockClientRepository)
+	svc := service.NewClientService(mockRepo)
+
+	client := &domain.Client{ID: clientID, UserID: userID, Nombre: "Ana"}
+	mockRepo.On("FindByID", ctx, clientID, userID).Return(client, nil)
+
+	result, err := svc.GetByID(ctx, clientID, userID)
+	assert.NoError(t, err)
+	assert.Equal(t, clientID, result.ID)
+}
+
+func TestClient_GetByID_NotFound(t *testing.T) {
+	ctx := context.Background()
+	userID := uuid.New()
+	clientID := uuid.New()
+
+	mockRepo := new(MockClientRepository)
+	svc := service.NewClientService(mockRepo)
+
+	mockRepo.On("FindByID", ctx, clientID, userID).Return(nil, gorm.ErrRecordNotFound)
+
+	_, err := svc.GetByID(ctx, clientID, userID)
+	assert.ErrorIs(t, err, service.ErrClientNotFound)
+}
+
+func TestClient_GetAll_OK(t *testing.T) {
+	ctx := context.Background()
+	userID := uuid.New()
+
+	mockRepo := new(MockClientRepository)
+	svc := service.NewClientService(mockRepo)
+
+	params := utils.PaginationParams{Page: 1, Limit: 10, Offset: 0}
+	clients := []domain.Client{{ID: uuid.New(), UserID: userID, Nombre: "Ana"}}
+	mockRepo.On("FindAll", ctx, userID, params).Return(clients, int64(1), nil)
+
+	result, total, err := svc.GetAll(ctx, userID, params)
+	assert.NoError(t, err)
+	assert.Equal(t, int64(1), total)
+	assert.Len(t, result, 1)
+}
+
+func TestClient_Update_OK(t *testing.T) {
+	ctx := context.Background()
+	userID := uuid.New()
+	clientID := uuid.New()
+
+	mockRepo := new(MockClientRepository)
+	svc := service.NewClientService(mockRepo)
+
+	existing := &domain.Client{ID: clientID, UserID: userID, Nombre: "Vieja", Email: strPtr("old@mail.com")}
+	mockRepo.On("FindByID", ctx, clientID, userID).Return(existing, nil)
+	mockRepo.On("FindByEmail", ctx, "nueva@mail.com", userID).Return(nil, gorm.ErrRecordNotFound)
+	mockRepo.On("Update", ctx, mock.AnythingOfType("*domain.Client")).Return(nil)
+
+	result, err := svc.Update(ctx, clientID, userID, service.ClientInput{
+		Nombre: "Nueva",
+		Email:  strPtr("nueva@mail.com"),
+	})
+
+	assert.NoError(t, err)
+	assert.Equal(t, "Nueva", result.Nombre)
+	assert.NotNil(t, result.Email)
+	assert.Equal(t, "nueva@mail.com", *result.Email)
+}
+
+func TestClient_Update_EmailMismoUsuario_OK(t *testing.T) {
+	// Actualizar con el mismo email del cliente → no debe fallar por duplicado
+	ctx := context.Background()
+	userID := uuid.New()
+	clientID := uuid.New()
+
+	mockRepo := new(MockClientRepository)
+	svc := service.NewClientService(mockRepo)
+
+	existing := &domain.Client{ID: clientID, UserID: userID, Nombre: "Ana", Email: strPtr("ana@mail.com")}
+	// FindByEmail retorna el mismo cliente (mismo ID) → no es duplicado
+	mockRepo.On("FindByID", ctx, clientID, userID).Return(existing, nil)
+	mockRepo.On("FindByEmail", ctx, "ana@mail.com", userID).Return(existing, nil)
+	mockRepo.On("Update", ctx, mock.AnythingOfType("*domain.Client")).Return(nil)
+
+	result, err := svc.Update(ctx, clientID, userID, service.ClientInput{
+		Nombre: "Ana Actualizada",
+		Email:  strPtr("ana@mail.com"),
+	})
+
+	assert.NoError(t, err)
+	assert.Equal(t, "Ana Actualizada", result.Nombre)
+}

@@ -300,3 +300,75 @@ func TestValidateAccessToken_TamperedToken(t *testing.T) {
 
 	assert.Error(t, err)
 }
+
+// ──────────────────────────────────────────────
+// Tests de RefreshTokens
+// ──────────────────────────────────────────────
+
+func TestRefreshTokens_TokenInvalido_Error(t *testing.T) {
+	mockRepo := new(MockUserRepository)
+	svc := newTestService(mockRepo)
+
+	mockRepo.On("FindRefreshToken", mock.Anything, "token-invalido").
+		Return(nil, gorm.ErrRecordNotFound)
+
+	_, err := svc.RefreshTokens(context.Background(), "token-invalido")
+	assert.ErrorIs(t, err, service.ErrInvalidRefreshToken)
+}
+
+func TestRefreshTokens_TokenRevocado_Error(t *testing.T) {
+	mockRepo := new(MockUserRepository)
+	svc := newTestService(mockRepo)
+
+	revokedToken := &domain.RefreshToken{
+		ID:        uuid.New(),
+		Token:     "token-revocado",
+		UserID:    uuid.New(),
+		RevokedAt: func() *time.Time { t := time.Now(); return &t }(), // ya fue revocado
+		ExpiresAt: time.Now().Add(7 * 24 * time.Hour),
+	}
+	mockRepo.On("FindRefreshToken", mock.Anything, "token-revocado").Return(revokedToken, nil)
+	// Token Rotation: al detectar reuseado, revoca todos
+	mockRepo.On("RevokeAllUserRefreshTokens", mock.Anything, revokedToken.UserID).Return(nil)
+
+	_, err := svc.RefreshTokens(context.Background(), "token-revocado")
+	assert.ErrorIs(t, err, service.ErrTokenReuseDetected)
+}
+
+// ──────────────────────────────────────────────
+// Tests de Logout
+// ──────────────────────────────────────────────
+
+func TestLogout_TokenValido_OK(t *testing.T) {
+	mockRepo := new(MockUserRepository)
+	svc := newTestService(mockRepo)
+
+	tokenID := uuid.New()
+	rt := &domain.RefreshToken{
+		ID:        tokenID,
+		Token:     "mi-refresh-token",
+		UserID:    uuid.New(),
+		ExpiresAt: time.Now().Add(7 * 24 * time.Hour),
+	}
+
+	mockRepo.On("FindRefreshToken", mock.Anything, "mi-refresh-token").Return(rt, nil)
+	mockRepo.On("RevokeRefreshToken", mock.Anything, tokenID).Return(nil)
+
+	err := svc.Logout(context.Background(), "mi-refresh-token")
+	assert.NoError(t, err)
+	mockRepo.AssertExpectations(t)
+}
+
+func TestLogout_TokenNoExiste_Idempotente(t *testing.T) {
+	// Logout es idempotente: si el token no existe, no retorna error al cliente
+	mockRepo := new(MockUserRepository)
+	svc := newTestService(mockRepo)
+
+	mockRepo.On("FindRefreshToken", mock.Anything, "token-inexistente").
+		Return(nil, gorm.ErrRecordNotFound)
+
+	err := svc.Logout(context.Background(), "token-inexistente")
+	// El handler captura el error y retorna éxito igual — el service sí retorna error,
+	// pero el handler lo ignora. Aquí verificamos el comportamiento del service.
+	assert.NoError(t, err) // el service NO retorna error, consideramos exitoso
+}

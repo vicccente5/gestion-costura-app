@@ -13,15 +13,27 @@ import (
 
 // Setup configura el router Gin con todos los middlewares globales y rutas.
 // Recibe los servicios por inyección de dependencias.
-func Setup(authSvc service.AuthService, clientSvc service.ClientService, materialSvc service.MaterialService) *gin.Engine {
-	// Crear el engine de Gin (ya sin el logger de Gin — usamos zerolog en main)
+func Setup(
+	authSvc service.AuthService,
+	clientSvc service.ClientService,
+	materialSvc service.MaterialService,
+	orderSvc service.OrderService,
+	txSvc service.TransactionService,
+	reportSvc service.ReportService,
+) *gin.Engine {
+	// Crear el engine de Gin sin middlewares por defecto de Gin.
+	// Usamos middlewares propios con zerolog para logging estructurado.
 	r := gin.New()
-	r.Use(gin.Recovery()) // Recupera panics y retorna 500 en lugar de crashear
+	r.Use(middleware.RecoveryWithLogger()) // Captura panics → JSON 500 estandarizado
+	r.Use(middleware.RequestLogger())      // Log estructurado de cada request
 
 	// Inicializar handlers
 	authHandler := handler.NewAuthHandler(authSvc)
 	clientHandler := handler.NewClientHandler(clientSvc)
 	materialHandler := handler.NewMaterialHandler(materialSvc)
+	orderHandler := handler.NewOrderHandler(orderSvc)
+	txHandler := handler.NewTransactionHandler(txSvc)
+	reportHandler := handler.NewReportHandler(reportSvc, txSvc)
 
 	// Rate limiter para login — instancia única compartida entre todos los workers de Gin
 	loginLimiter := middleware.LoginRateLimiter()
@@ -93,8 +105,39 @@ func Setup(authSvc service.AuthService, clientSvc service.ClientService, materia
 		}
 
 		// Módulos de Fases 5-8 se agregan aquí progresivamente:
-		// orders := protected.Group("/orders")
+		orders := protected.Group("/orders")
+		{
+			orders.GET("", orderHandler.GetAll)
+			orders.POST("", orderHandler.Create)
+			orders.GET("/:id", orderHandler.GetByID)
+			orders.PUT("/:id", orderHandler.UpdateMetadata)
+			orders.DELETE("/:id", orderHandler.Delete)
+			orders.PATCH("/:id/status", orderHandler.ChangeStatus)
+			orders.POST("/:id/materials", orderHandler.AddMaterial)
+			orders.PUT("/:id/materials/:mid", orderHandler.EditMaterialQuantity)
+			orders.DELETE("/:id/materials/:mid", orderHandler.RemoveMaterial)
+		}
+
 		// transactions := protected.Group("/transactions")
+		// ⚠️ ORDEN: /balance ANTES de /:id para que Gin no lo consuma como UUID
+		transactions := protected.Group("/transactions")
+		{
+			transactions.POST("", txHandler.Create)
+			transactions.GET("", txHandler.GetAll)
+			transactions.GET("/balance", txHandler.GetBalance) // ANTES de /:id
+			transactions.GET("/:id", txHandler.GetByID)
+			transactions.PUT("/:id", txHandler.Update)
+			transactions.DELETE("/:id", txHandler.Delete)
+		}
+
+		// Reportes (Fase 6B)
+		reports := protected.Group("/reports")
+		{
+			reports.GET("/summary", reportHandler.GetSummary)
+			reports.GET("/earnings", reportHandler.GetEarnings)
+			reports.GET("/top-materials", reportHandler.GetTopMaterials)
+			reports.GET("/top-orders", reportHandler.GetTopOrders)
+		}
 	}
 
 	return r

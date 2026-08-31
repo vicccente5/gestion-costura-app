@@ -308,3 +308,134 @@ func TestMaterialDelete_BlockedWhenUsedInOrders(t *testing.T) {
 	assert.ErrorIs(t, err, service.ErrMaterialUsedInOrders)
 	mockRepo.AssertNotCalled(t, "Delete")
 }
+
+func TestMaterial_GetByID_OK(t *testing.T) {
+	ctx := context.Background()
+	userID := uuid.New()
+	materialID := uuid.New()
+
+	mockRepo := new(MockMaterialRepository)
+	svc := service.NewMaterialService(mockRepo)
+
+	mat := &domain.Material{ID: materialID, UserID: userID, Nombre: "Hilo"}
+	mockRepo.On("FindByID", ctx, materialID, userID).Return(mat, nil)
+
+	result, err := svc.GetByID(ctx, materialID, userID)
+	assert.NoError(t, err)
+	assert.Equal(t, materialID, result.ID)
+}
+
+func TestMaterial_GetByID_NotFound(t *testing.T) {
+	ctx := context.Background()
+	userID := uuid.New()
+	materialID := uuid.New()
+
+	mockRepo := new(MockMaterialRepository)
+	svc := service.NewMaterialService(mockRepo)
+
+	mockRepo.On("FindByID", ctx, materialID, userID).Return(nil, gorm.ErrRecordNotFound)
+
+	_, err := svc.GetByID(ctx, materialID, userID)
+	assert.ErrorIs(t, err, service.ErrMaterialNotFound)
+}
+
+func TestMaterial_GetAll_OK(t *testing.T) {
+	ctx := context.Background()
+	userID := uuid.New()
+
+	mockRepo := new(MockMaterialRepository)
+	svc := service.NewMaterialService(mockRepo)
+
+	params := utils.PaginationParams{Page: 1, Limit: 10, Offset: 0}
+	mats := []domain.Material{{ID: uuid.New(), UserID: userID, Nombre: "Hilo"}}
+	mockRepo.On("FindAll", ctx, userID, params, "").Return(mats, int64(1), nil)
+
+	result, total, err := svc.GetAll(ctx, userID, params, "")
+	assert.NoError(t, err)
+	assert.Equal(t, int64(1), total)
+	assert.Len(t, result, 1)
+}
+
+func TestMaterial_GetLowStock_OK(t *testing.T) {
+	ctx := context.Background()
+	userID := uuid.New()
+
+	mockRepo := new(MockMaterialRepository)
+	svc := service.NewMaterialService(mockRepo)
+
+	mats := []domain.Material{{ID: uuid.New(), StockActual: 1.0, StockMinimo: 5.0}}
+	mockRepo.On("FindLowStock", ctx, userID).Return(mats, nil)
+
+	result, err := svc.GetLowStock(ctx, userID)
+	assert.NoError(t, err)
+	assert.Len(t, result, 1)
+}
+
+func TestMaterial_Update_OK(t *testing.T) {
+	ctx := context.Background()
+	userID := uuid.New()
+	materialID := uuid.New()
+
+	mockRepo := new(MockMaterialRepository)
+	svc := service.NewMaterialService(mockRepo)
+
+	existing := &domain.Material{ID: materialID, UserID: userID, Nombre: "Hilo Viejo", Categoria: "Hilos", Unidad: "metros", StockMinimo: 5}
+	mockRepo.On("FindByID", ctx, materialID, userID).Return(existing, nil)
+	mockRepo.On("FindByName", ctx, "Hilo Nuevo", userID).Return(nil, gorm.ErrRecordNotFound)
+	mockRepo.On("Update", ctx, mock.AnythingOfType("*domain.Material")).Return(nil)
+
+	result, err := svc.Update(ctx, materialID, userID, service.MaterialInput{
+		Nombre:      "Hilo Nuevo",
+		Categoria:   "Hilos",
+		Unidad:      "metros",
+		StockMinimo: 10,
+	})
+
+	assert.NoError(t, err)
+	assert.Equal(t, "Hilo Nuevo", result.Nombre)
+	assert.Equal(t, float64(10), result.StockMinimo)
+}
+
+func TestMaterial_GetPurchases_OK(t *testing.T) {
+	ctx := context.Background()
+	userID := uuid.New()
+	materialID := uuid.New()
+
+	mockRepo := new(MockMaterialRepository)
+	svc := service.NewMaterialService(mockRepo)
+
+	mat := &domain.Material{ID: materialID, UserID: userID}
+	purchases := []domain.MaterialPurchase{{ID: uuid.New(), MaterialID: materialID, Cantidad: 5}}
+
+	mockRepo.On("FindByID", ctx, materialID, userID).Return(mat, nil)
+	mockRepo.On("FindPurchasesByMaterialID", ctx, materialID, userID).Return(purchases, nil)
+
+	result, err := svc.GetPurchases(ctx, materialID, userID)
+	assert.NoError(t, err)
+	assert.Len(t, result, 1)
+}
+
+func TestMaterial_Update_NombreDuplicado_Error(t *testing.T) {
+	ctx := context.Background()
+	userID := uuid.New()
+	materialID := uuid.New()
+	otroID := uuid.New()
+
+	mockRepo := new(MockMaterialRepository)
+	svc := service.NewMaterialService(mockRepo)
+
+	existing := &domain.Material{ID: materialID, UserID: userID, Nombre: "Hilo A"}
+	otro := &domain.Material{ID: otroID, UserID: userID, Nombre: "Hilo B"} // ya existe con ese nombre
+
+	mockRepo.On("FindByID", ctx, materialID, userID).Return(existing, nil)
+	mockRepo.On("FindByName", ctx, "Hilo B", userID).Return(otro, nil)
+
+	_, err := svc.Update(ctx, materialID, userID, service.MaterialInput{
+		Nombre:      "Hilo B", // nombre ya existe
+		Categoria:   "Hilos",
+		Unidad:      "metros",
+		StockMinimo: 5,
+	})
+
+	assert.ErrorIs(t, err, service.ErrMaterialNameDuplicate)
+}

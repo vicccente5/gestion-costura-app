@@ -43,6 +43,15 @@ type OrderRepository interface {
 	// RestoreStock devuelve el stock de los materiales al cancelar un encargo.
 	// Incluye los order_materials del encargo para saber qué restaurar.
 	RestoreStock(ctx context.Context, order *domain.Order) error
+
+	// AddMaterial añade un material a un encargo existente y descuenta su stock.
+	AddMaterial(ctx context.Context, orderID uuid.UUID, userID uuid.UUID, item OrderItem) (*domain.OrderMaterial, error)
+
+	// EditMaterialQuantity ajusta la cantidad de un material en un encargo, restaurando la diferencia de stock.
+	EditMaterialQuantity(ctx context.Context, orderMaterialID, userID uuid.UUID, nuevaCantidad float64) error
+
+	// RemoveMaterial elimina un material de un encargo y restaura su stock.
+	RemoveMaterial(ctx context.Context, orderMaterialID, userID uuid.UUID) error
 }
 
 // OrderItem agrupa un material y su cantidad para crear un encargo.
@@ -195,5 +204,91 @@ func (r *orderRepository) RestoreStock(ctx context.Context, order *domain.Order)
 			}
 		}
 		return nil
+	})
+}
+
+// AddMaterial añade un material a un encargo existente y descuenta su stock atómicamente.
+func (r *orderRepository) AddMaterial(ctx context.Context, orderID uuid.UUID, userID uuid.UUID, item OrderItem) (*domain.OrderMaterial, error) {
+	var orderMaterial domain.OrderMaterial
+	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		// 1. Verificar que el encargo existe y pertenece al usuario
+		var count int64
+		if err := tx.Model(&domain.Order{}).Where("id = ? AND user_id = ? AND deleted_at IS NULL", orderID, userID).Count(&count).Error; err != nil {
+			return err
+		}
+		if count == 0 {
+			return gorm.ErrRecordNotFound
+		}
+
+		// 2. Crear OrderMaterial
+		orderMaterial = domain.OrderMaterial{
+			Cantidad:             item.Cantidad,
+			CostoUnitarioSnapshot: item.Material.CostoUnitario,
+			OrderID:              orderID,
+			MaterialID:           item.Material.ID,
+		}
+		if err := tx.Create(&orderMaterial).Error; err != nil {
+			return fmt.Errorf("error guardando material del encargo: %w", err)
+		}
+
+		// 3. Descontar stock
+		result := tx.Model(&domain.Material{}).
+			Where("id = ? AND user_id = ?", item.Material.ID, userID).
+			Update("stock_actual", gorm.Expr("stock_actual - ?", item.Cantidad))
+		if result.Error != nil {
+			return fmt.Errorf("error descontando stock: %w", result.Error)
+		}
+
+		return nil
+	})
+	return &orderMaterial, err
+}
+
+// EditMaterialQuantity ajusta la cantidad de un material y el stock atómicamente.
+func (r *orderRepository) EditMaterialQuantity(ctx context.Context, orderMaterialID, userID uuid.UUID, nuevaCantidad float64) error {
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var om domain.OrderMaterial
+		// JOIN con orders para validar pertenencia (user_id)
+		if err := tx.Joins("JOIN orders ON orders.id = order_materials.order_id").
+			Where("order_materials.id = ? AND orders.user_id = ? AND orders.deleted_at IS NULL", orderMaterialID, userID).
+			First(&om).Error; err != nil {
+			return err
+		}
+
+		diferencia := nuevaCantidad - om.Cantidad
+
+		// Actualizar cantidad en el encargo
+		if err := tx.Model(&om).Update("cantidad", nuevaCantidad).Error; err != nil {
+			return err
+		}
+
+		// Actualizar stock (diferencia positiva = resta stock, negativa = suma stock)
+		result := tx.Model(&domain.Material{}).
+			Where("id = ?", om.MaterialID).
+			Update("stock_actual", gorm.Expr("stock_actual - ?", diferencia))
+		
+		return result.Error
+	})
+}
+
+// RemoveMaterial elimina el material del encargo y restaura su stock.
+func (r *orderRepository) RemoveMaterial(ctx context.Context, orderMaterialID, userID uuid.UUID) error {
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var om domain.OrderMaterial
+		if err := tx.Joins("JOIN orders ON orders.id = order_materials.order_id").
+			Where("order_materials.id = ? AND orders.user_id = ? AND orders.deleted_at IS NULL", orderMaterialID, userID).
+			First(&om).Error; err != nil {
+			return err
+		}
+
+		// Restaurar stock
+		if err := tx.Model(&domain.Material{}).
+			Where("id = ?", om.MaterialID).
+			Update("stock_actual", gorm.Expr("stock_actual + ?", om.Cantidad)).Error; err != nil {
+			return err
+		}
+
+		// Eliminar OrderMaterial (Hard delete porque es tabla pivote sin deleted_at)
+		return tx.Delete(&om).Error
 	})
 }

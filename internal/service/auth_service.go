@@ -141,21 +141,27 @@ func (s *authService) Login(ctx context.Context, email, password string) (*AuthT
 //   - Si se detecta reutilización (token ya revocado) → revocar TODOS los tokens del usuario
 //   - Esto cierra todas las sesiones activas ante un posible robo de token
 func (s *authService) RefreshTokens(ctx context.Context, refreshTokenStr string) (*AuthTokens, error) {
-	// Buscar el token en la DB — FindRefreshToken ya verifica que no esté revocado ni expirado
+	// Buscar el token en la DB
 	existingToken, err := s.userRepo.FindRefreshToken(ctx, refreshTokenStr)
 	if err != nil {
-		// Token no encontrado o expirado — verificar si fue revocado (posible reutilización)
-		// Para detectar reuso, intentamos buscarlo aunque esté revocado
-		var revokedToken domain.RefreshToken
-		// Si la búsqueda original falló por "revocado", no por "no encontrado",
-		// el token fue reutilizado → revocar todo
-		// En esta implementación simplificada, cualquier token inválido retorna error genérico
-		_ = revokedToken
 		return nil, ErrInvalidRefreshToken
 	}
 
-	// Revocar el refresh token usado — Token Rotation:
-	// Cada uso genera un par nuevo. El anterior queda inválido inmediatamente.
+	// Detectar reutilización (Token Rotation)
+	if existingToken.IsRevoked() {
+		// Alerta de seguridad: alguien intentó usar un token revocado.
+		// Podría ser un atacante, o el usuario legítimo tras un robo de token.
+		// Revocamos TODO para proteger la cuenta.
+		_ = s.userRepo.RevokeAllUserRefreshTokens(ctx, existingToken.UserID)
+		return nil, ErrTokenReuseDetected
+	}
+
+	// Verificar expiración
+	if existingToken.ExpiresAt.Before(time.Now()) {
+		return nil, ErrInvalidRefreshToken
+	}
+
+	// Revocar el refresh token usado — Token Rotation
 	if err := s.userRepo.RevokeRefreshToken(ctx, existingToken.ID); err != nil {
 		return nil, fmt.Errorf("error revocando token: %w", err)
 	}

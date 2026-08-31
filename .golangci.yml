@@ -1,0 +1,70 @@
+# .golangci.yml — Configuración del linter para Gestión Costura App
+# Ejecutar con: golangci-lint run ./...
+# Documentación: https://golangci-lint.run/usage/configuration/
+
+version: "2"
+
+linters:
+  enable:
+    # Detección de bugs y errores lógicos
+    - errcheck       # Chequea que los errores retornados sean chequeados
+    - govet          # Análisis estático oficial de Go (shadowing, printf args, etc.)
+    - staticcheck    # Suite completa de análisis estático (SA, ST, QF, S)
+    - gosimple       # Sugiere simplificaciones del código
+    - ineffassign    # Detecta asignaciones que nunca se usan
+
+    # Calidad y legibilidad
+    - gofmt          # Verifica formato estándar Go
+    - goimports      # Verifica orden de imports (stdlib, externo, interno)
+    - misspell       # Detecta errores de ortografía en comentarios y strings
+    - unconvert      # Detecta conversiones de tipo innecesarias
+    - unparam        # Detecta parámetros de función que siempre reciben el mismo valor
+
+    # Seguridad
+    - gosec          # Detecta problemas de seguridad (SQL injection, path traversal, etc.)
+
+    # Complejidad
+    - cyclop         # Detecta funciones con complejidad ciclomática alta (> 10)
+    - gocognit       # Mide complejidad cognitiva
+
+linters-settings:
+  errcheck:
+    # No forzar chequeo de errores en defer Close() — es un patrón común y aceptado
+    ignore: "Close"
+
+  gosec:
+    # G401/G501: no usar MD5/SHA1 — nosotros usamos bcrypt (correcto)
+    # G304: file inclusion — no aplica a este proyecto
+    excludes:
+      - G101  # Hardcoded credentials — falsos positivos en tests con strings de ejemplo
+
+  cyclop:
+    max-complexity: 12  # Permitimos ligeramente más que el default (10) para las state machines
+
+  gocognit:
+    min-complexity: 20  # Solo alertar en funciones muy complejas
+
+  misspell:
+    locale: US  # Inglés americano para los comentarios
+
+issues:
+  # Excluir directorios que no son código propio
+  exclude-dirs:
+    - vendor
+    - migrations  # Los .sql no son Go
+
+  exclude-rules:
+    # En los archivos de test, permitir errores no chequeados (testify assert)
+    - path: "_test\\.go"
+      linters:
+        - errcheck
+        - gosec
+
+    # El main.go tiene patrones de inicialización que parecen "complejos" pero son necesarios
+    - path: "cmd/main\\.go"
+      linters:
+        - cyclop
+        - gocognit
+
+  max-issues-per-linter: 0   # Mostrar todos los issues, sin límite
+  max-same-issues: 0          # No agrupar issues similares

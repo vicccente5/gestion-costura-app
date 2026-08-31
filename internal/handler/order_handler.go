@@ -56,6 +56,11 @@ type statusChangeRequest struct {
 	Estado string `json:"estado" validate:"required"`
 }
 
+// editMaterialQuantityRequest define la cantidad a ajustar.
+type editMaterialQuantityRequest struct {
+	Cantidad float64 `json:"cantidad" validate:"required,gt=0"`
+}
+
 // Create godoc
 // POST /api/v1/orders
 func (h *OrderHandler) Create(c *gin.Context) {
@@ -292,4 +297,125 @@ func (h *OrderHandler) Delete(c *gin.Context) {
 	}
 
 	utils.OK(c, "Encargo eliminado exitosamente", nil)
+}
+
+// AddMaterial godoc
+// POST /api/v1/orders/:id/materials
+func (h *OrderHandler) AddMaterial(c *gin.Context) {
+	userID := middleware.GetUserID(c)
+
+	orderID, err := parseUUID(c, "id")
+	if err != nil {
+		return
+	}
+
+	var req orderMaterialRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		utils.BadRequest(c, "El cuerpo de la petición tiene formato inválido")
+		return
+	}
+	if err := utils.Validate.Struct(req); err != nil {
+		utils.BadRequest(c, "Datos de entrada inválidos")
+		return
+	}
+
+	materialID, err := uuid.Parse(req.MaterialID)
+	if err != nil {
+		utils.BadRequest(c, "material_id inválido")
+		return
+	}
+
+	om, err := h.orderSvc.AddMaterial(c.Request.Context(), orderID, userID, service.OrderMaterialInput{
+		MaterialID: materialID,
+		Cantidad:   req.Cantidad,
+	})
+	if err != nil {
+		switch {
+		case errors.Is(err, service.ErrOrderNotFound):
+			utils.NotFound(c, "Encargo no encontrado")
+		case errors.Is(err, service.ErrOrderMaterialNotFound):
+			utils.NotFound(c, "Material no encontrado")
+		case errors.Is(err, service.ErrOrderNotEditable):
+			utils.Conflict(c, err.Error())
+		case errors.Is(err, service.ErrInsufficientStock):
+			utils.Conflict(c, err.Error())
+		default:
+			utils.InternalError(c, "Error al añadir material")
+		}
+		return
+	}
+
+	utils.Created(c, "Material añadido al encargo exitosamente", om)
+}
+
+// EditMaterialQuantity godoc
+// PUT /api/v1/orders/:id/materials/:mid
+func (h *OrderHandler) EditMaterialQuantity(c *gin.Context) {
+	userID := middleware.GetUserID(c)
+
+	orderID, err := parseUUID(c, "id")
+	if err != nil {
+		return
+	}
+
+	orderMaterialID, err := parseUUID(c, "mid")
+	if err != nil {
+		return
+	}
+
+	var req editMaterialQuantityRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		utils.BadRequest(c, "El cuerpo de la petición tiene formato inválido")
+		return
+	}
+	if err := utils.Validate.Struct(req); err != nil {
+		utils.BadRequest(c, "Cantidad inválida")
+		return
+	}
+
+	if err := h.orderSvc.EditMaterialQuantity(c.Request.Context(), orderID, orderMaterialID, userID, req.Cantidad); err != nil {
+		switch {
+		case errors.Is(err, service.ErrOrderNotFound):
+			utils.NotFound(c, "Encargo no encontrado")
+		case errors.Is(err, service.ErrOrderNotEditable):
+			utils.Conflict(c, err.Error())
+		case errors.Is(err, service.ErrInsufficientStock):
+			utils.Conflict(c, err.Error())
+		default:
+			utils.InternalError(c, "Error al editar la cantidad")
+		}
+		return
+	}
+
+	utils.OK(c, "Cantidad actualizada exitosamente", nil)
+}
+
+// RemoveMaterial godoc
+// DELETE /api/v1/orders/:id/materials/:mid
+func (h *OrderHandler) RemoveMaterial(c *gin.Context) {
+	userID := middleware.GetUserID(c)
+
+	orderID, err := parseUUID(c, "id")
+	if err != nil {
+		return
+	}
+
+	orderMaterialID, err := parseUUID(c, "mid")
+	if err != nil {
+		return
+	}
+
+	if err := h.orderSvc.RemoveMaterial(c.Request.Context(), orderID, orderMaterialID, userID); err != nil {
+		switch {
+		case errors.Is(err, service.ErrOrderNotFound):
+			utils.NotFound(c, "Encargo no encontrado")
+		case errors.Is(err, service.ErrOrderNotEditable):
+			utils.Conflict(c, err.Error())
+		default:
+			utils.InternalError(c, "Error al quitar el material")
+		}
+		return
+	}
+
+	utils.OK(c, "Material quitado del encargo exitosamente", nil)
 }

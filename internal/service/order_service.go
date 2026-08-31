@@ -77,6 +77,11 @@ type OrderService interface {
 	UpdateMetadata(ctx context.Context, id, userID uuid.UUID, input OrderUpdateInput) (*domain.Order, error)
 	ChangeStatus(ctx context.Context, id, userID uuid.UUID, newStatus domain.OrderStatus) (*domain.Order, error)
 	Delete(ctx context.Context, id, userID uuid.UUID) error
+
+	// Gestión de materiales del encargo
+	AddMaterial(ctx context.Context, orderID, userID uuid.UUID, input OrderMaterialInput) (*domain.OrderMaterial, error)
+	EditMaterialQuantity(ctx context.Context, orderID, orderMaterialID, userID uuid.UUID, nuevaCantidad float64) error
+	RemoveMaterial(ctx context.Context, orderID, orderMaterialID, userID uuid.UUID) error
 }
 
 // orderService es la implementación concreta.
@@ -351,4 +356,100 @@ func (s *orderService) buildDeliveryTransaction(order *domain.Order) *domain.Tra
 	}
 }
 
+// AddMaterial añade un material a un encargo si está en estado pendiente.
+func (s *orderService) AddMaterial(ctx context.Context, orderID, userID uuid.UUID, input OrderMaterialInput) (*domain.OrderMaterial, error) {
+	order, err := s.orderRepo.FindByID(ctx, orderID, userID)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, ErrOrderNotFound
+		}
+		return nil, fmt.Errorf("error buscando encargo: %w", err)
+	}
 
+	if order.Estado != domain.OrderStatusPendiente {
+		return nil, ErrOrderNotEditable
+	}
+
+	if input.Cantidad <= 0 {
+		return nil, fmt.Errorf("la cantidad debe ser mayor a 0")
+	}
+
+	material, err := s.materialRepo.FindByID(ctx, input.MaterialID, userID)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, ErrOrderMaterialNotFound
+		}
+		return nil, fmt.Errorf("error buscando material: %w", err)
+	}
+
+	if material.StockActual < input.Cantidad {
+		return nil, fmt.Errorf("%w: %s (disponible: %.2f, requerido: %.2f)",
+			ErrInsufficientStock, material.Nombre, material.StockActual, input.Cantidad)
+	}
+
+	item := repository.OrderItem{
+		Material: material,
+		Cantidad: input.Cantidad,
+	}
+
+	return s.orderRepo.AddMaterial(ctx, orderID, userID, item)
+}
+
+// EditMaterialQuantity edita la cantidad de un material en un encargo pendiente.
+func (s *orderService) EditMaterialQuantity(ctx context.Context, orderID, orderMaterialID, userID uuid.UUID, nuevaCantidad float64) error {
+	order, err := s.orderRepo.FindByID(ctx, orderID, userID)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return ErrOrderNotFound
+		}
+		return fmt.Errorf("error buscando encargo: %w", err)
+	}
+
+	if order.Estado != domain.OrderStatusPendiente {
+		return ErrOrderNotEditable
+	}
+
+	if nuevaCantidad <= 0 {
+		return fmt.Errorf("la cantidad debe ser mayor a 0")
+	}
+
+	// Buscar el material específico en el encargo
+	var om *domain.OrderMaterial
+	for _, m := range order.Materials {
+		if m.ID == orderMaterialID {
+			om = &m
+			break
+		}
+	}
+	if om == nil {
+		return fmt.Errorf("el material no pertenece a este encargo")
+	}
+
+	// Verificar si hay stock suficiente si la cantidad aumenta
+	if nuevaCantidad > om.Cantidad {
+		diferencia := nuevaCantidad - om.Cantidad
+		if om.Material.StockActual < diferencia {
+			return fmt.Errorf("%w: %s (disponible: %.2f, requerido extra: %.2f)",
+				ErrInsufficientStock, om.Material.Nombre, om.Material.StockActual, diferencia)
+		}
+	}
+
+	return s.orderRepo.EditMaterialQuantity(ctx, orderMaterialID, userID, nuevaCantidad)
+}
+
+// RemoveMaterial quita un material de un encargo pendiente.
+func (s *orderService) RemoveMaterial(ctx context.Context, orderID, orderMaterialID, userID uuid.UUID) error {
+	order, err := s.orderRepo.FindByID(ctx, orderID, userID)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return ErrOrderNotFound
+		}
+		return fmt.Errorf("error buscando encargo: %w", err)
+	}
+
+	if order.Estado != domain.OrderStatusPendiente {
+		return ErrOrderNotEditable
+	}
+
+	return s.orderRepo.RemoveMaterial(ctx, orderMaterialID, userID)
+}

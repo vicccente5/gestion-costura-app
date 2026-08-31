@@ -516,11 +516,11 @@ Quiero construir el backend completo de una app móvil Flutter para gestión de 
   - PUT    /api/v1/orders/:id
   - DELETE /api/v1/orders/:id
   - PATCH  /api/v1/orders/:id/status
-  - POST   /api/v1/orders/:id/materials         (asignar material)
-  - PUT    /api/v1/orders/:id/materials/:mid     (editar cantidad)
-  - DELETE /api/v1/orders/:id/materials/:mid     (quitar material)
-- [ ] Estados: pendiente → en_progreso → completado → entregado (aquí se genera la transacción)
-- [ ] Tests unitarios de order_service.go
+  - [x] POST   /api/v1/orders/:id/materials         (asignar material)
+  - [x] PUT    /api/v1/orders/:id/materials/:mid     (editar cantidad)
+  - [x] DELETE /api/v1/orders/:id/materials/:mid     (quitar material)
+- [x] Estados: pendiente → en_progreso → completado → entregado (aquí se genera la transacción)
+- [x] Tests unitarios de order_service.go
 
 **Checkpoint ✅**
 - Crear encargo con materiales → stock se descuenta
@@ -590,7 +590,7 @@ Quiero construir el backend completo de una app móvil Flutter para gestión de 
 
 ---
 
-### FASE 7 — Testing, Logging y Calidad de Código
+### FASE 7 — Testing, Logging y Calidad de Código [COMPLETADA]
 
 **Objetivo:** Completar cobertura de tests, añadir observabilidad y asegurar calidad antes del despliegue.
 
@@ -598,23 +598,23 @@ Quiero construir el backend completo de una app móvil Flutter para gestión de 
 > Aquí se completan los tests de integración y se añade logging y linting.
 
 **Entregables:**
-- [ ] Tests de integración para handlers principales (usando httptest)
-- [ ] go test ./... -coverprofile=coverage.out para revisar cobertura total
-- [ ] zerolog para logging estructurado (JSON en producción, legible en dev)
-- [ ] Middleware de logging de requests (método, ruta, status, latencia, user_id)
-- [ ] Error handler global centralizado en Gin
-- [ ] Respuestas JSON estandarizadas:
+- [x] Tests de integración para handlers principales (usando httptest)
+- [x] go test ./... -coverprofile=coverage.out para revisar cobertura total
+- [x] zerolog para logging estructurado (JSON en producción, legible en dev)
+- [x] Middleware de logging de requests (método, ruta, status, latencia, user_id)
+- [x] Error handler global centralizado en Gin
+- [x] Respuestas JSON estandarizadas:
   - Éxito: { "success": true, "data": {...}, "message": "..." }
   - Error: { "success": false, "error": "descripcion", "code": 400 }
-- [ ] golangci-lint configurado con .golangci.yml
-- [ ] Verificar que ningún log expone passwords, tokens o datos sensibles
+- [x] golangci-lint configurado con .golangci.yml
+- [x] Verificar que ningún log expone passwords, tokens o datos sensibles
 
 **Checkpoint ✅**
-- go test ./... pasa sin errores
-- Cobertura > 70% en capa de services
-- golangci-lint run sin errores críticos
-- Los logs incluyen: método, ruta, status, latencia y user_id
-- Ningún log imprime password ni JWT en texto plano
+- [x] go test ./... pasa sin errores
+- [x] Cobertura > 70% en capa de services
+- [x] golangci-lint run sin errores críticos
+- [x] Los logs incluyen: método, ruta, status, latencia y user_id
+- [x] Ningún log imprime password ni JWT en texto plano
 
 ---
 
