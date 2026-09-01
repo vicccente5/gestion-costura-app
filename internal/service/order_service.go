@@ -18,7 +18,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"math"
 	"time"
 
 	"github.com/google/uuid"
@@ -204,9 +203,22 @@ func (s *orderService) ChangeStatus(ctx context.Context, id, userID uuid.UUID, n
 		return nil, fmt.Errorf("error buscando encargo: %w", err)
 	}
 
-	// Validar la transición de estado
-	if err := validateStatusTransition(order.Estado, newStatus); err != nil {
-		return nil, err
+	// Validar la transición de estado — se permite saltar a cualquier estado
+	// principal (pendiente, en_progreso, completado, entregado).
+	// Solo restricción: si ya está cancelado, no se puede cambiar.
+	if order.Estado == domain.OrderStatusCancelado {
+		return nil, fmt.Errorf("%w: un encargo cancelado no puede cambiar de estado", ErrOrderInvalidStatusChange)
+	}
+	// Validar que el nuevo estado sea uno de los valores aceptados
+	validStates := map[domain.OrderStatus]bool{
+		domain.OrderStatusPendiente:  true,
+		domain.OrderStatusEnProgreso: true,
+		domain.OrderStatusCompletado: true,
+		domain.OrderStatusEntregado:  true,
+		domain.OrderStatusCancelado:  true,
+	}
+	if !validStates[newStatus] {
+		return nil, fmt.Errorf("%w: estado inválido '%s'", ErrOrderInvalidStatusChange, newStatus)
 	}
 
 	// Efecto secundario: cancelado → restaurar stock
@@ -248,10 +260,8 @@ func (s *orderService) Delete(ctx context.Context, id, userID uuid.UUID) error {
 		return fmt.Errorf("error buscando encargo: %w", err)
 	}
 
-	if order.Estado != domain.OrderStatusPendiente {
-		return ErrOrderNotDeletable
-	}
-
+	// Ya no restringimos borrar solo encargos pendientes.
+	// Se puede borrar en cualquier estado, y siempre restauramos stock.
 	// Restaurar stock antes de eliminar
 	if len(order.Materials) > 0 {
 		if err := s.orderRepo.RestoreStock(ctx, order); err != nil {
@@ -326,10 +336,8 @@ func validateStatusTransition(current, next domain.OrderStatus) error {
 }
 
 // buildDeliveryTransaction construye la Transaction automática al entregar un encargo.
-// Calcula la rentabilidad como porcentaje del precio de venta sobre el costo total.
+// Refleja la ganancia normal (precio de venta) y la ganancia neta.
 func (s *orderService) buildDeliveryTransaction(order *domain.Order) *domain.Transaction {
-	descripcion := fmt.Sprintf("Ingreso por entrega de encargo: %s", order.Descripcion)
-
 	// Costo total de materiales con los snapshots históricos
 	var costoMateriales float64
 	for _, item := range order.Materials {
@@ -339,10 +347,11 @@ func (s *orderService) buildDeliveryTransaction(order *domain.Order) *domain.Tra
 	// Costo de mano de obra
 	costoManoObra := float64(order.Horas) * float64(order.TarifaHora)
 
-	// Margen porcentual — null si precio_venta = 0 (evitar división por cero)
-	// margen = (precio_venta - costo_total) / precio_venta * 100
-	_ = costoMateriales + costoManoObra
-	_ = math.Round // reservado para cálculos futuros de margen
+	costoTotal := costoMateriales + costoManoObra
+	gananciaNeta := float64(order.PrecioVenta) - costoTotal
+
+	descripcion := fmt.Sprintf("Encargo entregado: %s | Ganancia Normal (Ingreso): $%d | Ganancia Neta: $%.0f", 
+		order.Descripcion, order.PrecioVenta, gananciaNeta)
 
 	orderID := order.ID
 	return &domain.Transaction{

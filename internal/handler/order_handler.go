@@ -308,13 +308,14 @@ func (h *OrderHandler) ChangeStatus(c *gin.Context) {
 	// Validar que el estado sea uno de los valores permitidos
 	newStatus := domain.OrderStatus(req.Estado)
 	validStatuses := map[domain.OrderStatus]bool{
+		domain.OrderStatusPendiente:  true,
 		domain.OrderStatusEnProgreso: true,
 		domain.OrderStatusCompletado: true,
 		domain.OrderStatusEntregado:  true,
 		domain.OrderStatusCancelado:  true,
 	}
 	if !validStatuses[newStatus] {
-		utils.BadRequest(c, "Estado inválido. Valores permitidos: en_progreso, completado, entregado, cancelado")
+		utils.BadRequest(c, "Estado inválido. Valores permitidos: pendiente, en_progreso, completado, entregado, cancelado")
 		return
 	}
 

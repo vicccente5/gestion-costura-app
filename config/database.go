@@ -3,6 +3,7 @@ package config
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/golang-migrate/migrate/v4"
 	_ "github.com/golang-migrate/migrate/v4/database/postgres" // driver postgres para migrate
@@ -46,6 +47,14 @@ func NewDatabase(cfg DatabaseConfig) (*gorm.DB, error) {
 	// Verificar que la conexión está activa
 	if err := sqlDB.Ping(); err != nil {
 		return nil, fmt.Errorf("error haciendo ping a PostgreSQL: %w", err)
+	}
+
+	// Configurar Connection Pool (Fase 10 - Seguridad y Estabilidad)
+	sqlDB, dbErr := db.DB()
+	if dbErr == nil {
+		sqlDB.SetMaxOpenConns(25) // Evita agotar conexiones en Postgres bajo ataques DoS
+		sqlDB.SetMaxIdleConns(5)  // Mantiene 5 conexiones vivas para respuestas rápidas
+		sqlDB.SetConnMaxLifetime(5 * time.Minute)
 	}
 
 	return db, nil

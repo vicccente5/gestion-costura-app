@@ -29,6 +29,8 @@ func Setup(
 	r := gin.New()
 	r.Use(middleware.RecoveryWithLogger()) // Captura panics → JSON 500 estandarizado
 	r.Use(middleware.RequestLogger())      // Log estructurado de cada request
+	r.Use(middleware.SecurityHeaders())    // Seguridad HTTP (HSTS, NoSniff, X-Frame)
+	r.Use(middleware.MaxBodySize(2 * 1024 * 1024)) // 2MB Max Request Body Size
 
 	// Inicializar handlers
 	authHandler := handler.NewAuthHandler(authSvc)

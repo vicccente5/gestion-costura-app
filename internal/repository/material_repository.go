@@ -7,6 +7,7 @@ package repository
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/google/uuid"
 	"github.com/vicccente5/gestion-costura-app/internal/domain"
@@ -42,9 +43,8 @@ type MaterialRepository interface {
 	// Usado para bloquear eliminaciones que romperían el historial de encargos.
 	IsUsedInOrders(ctx context.Context, materialID uuid.UUID) (bool, error)
 
-	// CreatePurchase registra una compra y actualiza stock + costo unitario (promedio ponderado).
-	// Esta operación es ATÓMICA — ambas actualizaciones ocurren en la misma transacción.
-	CreatePurchase(ctx context.Context, purchase *domain.MaterialPurchase, material *domain.Material) error
+	// CreatePurchase registra la compra, actualiza el material y opcionalmente crea una transacción financiera.
+	CreatePurchase(ctx context.Context, purchase *domain.MaterialPurchase, material *domain.Material, transaction *domain.Transaction) error
 
 	// FindPurchasesByMaterialID retorna el historial de compras de un material.
 	FindPurchasesByMaterialID(ctx context.Context, materialID, userID uuid.UUID) ([]domain.MaterialPurchase, error)
@@ -155,17 +155,28 @@ func (r *materialRepository) IsUsedInOrders(ctx context.Context, materialID uuid
 
 // CreatePurchase registra la compra Y actualiza el material en una transacción atómica.
 // Si cualquier parte falla, todo se revierte — stock y compra siempre son consistentes.
-func (r *materialRepository) CreatePurchase(ctx context.Context, purchase *domain.MaterialPurchase, material *domain.Material) error {
+func (r *materialRepository) CreatePurchase(ctx context.Context, purchase *domain.MaterialPurchase, material *domain.Material, transaction *domain.Transaction) error {
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		// 1. Insertar el registro de compra
 		if err := tx.Create(purchase).Error; err != nil {
-			return err
+			return fmt.Errorf("error guardando registro de compra: %w", err)
 		}
-		// 2. Actualizar stock_actual y costo_unitario del material
-		// Save actualiza todos los campos con los valores ya calculados en el service
-		if err := tx.Save(material).Error; err != nil {
-			return err
+
+		// 2. Actualizar stock y costo del material (solo campos específicos para no sobreescribir otros datos sin querer)
+		if err := tx.Model(material).Updates(map[string]interface{}{
+			"stock_actual":   material.StockActual,
+			"costo_unitario": material.CostoUnitario,
+		}).Error; err != nil {
+			return fmt.Errorf("error actualizando stock del material: %w", err)
 		}
+
+		// 3. Crear la transacción financiera (si aplica)
+		if transaction != nil {
+			if err := tx.Create(transaction).Error; err != nil {
+				return fmt.Errorf("error creando transacción financiera: %w", err)
+			}
+		}
+
 		return nil
 	})
 }

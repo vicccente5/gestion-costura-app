@@ -125,11 +125,6 @@ func (s *transactionService) Update(ctx context.Context, id, userID uuid.UUID, i
 		return nil, fmt.Errorf("error buscando transacción: %w", err)
 	}
 
-	// REGLA CRÍTICA: source="order" no se puede editar manualmente
-	if tx.Source == domain.TransactionSourceOrder {
-		return nil, ErrTransactionNotEditable
-	}
-
 	if err := validateTipo(input.Tipo); err != nil {
 		return nil, err
 	}
@@ -150,19 +145,14 @@ func (s *transactionService) Update(ctx context.Context, id, userID uuid.UUID, i
 	return tx, nil
 }
 
-// Delete elimina una transacción — solo si es source="manual".
+// Delete elimina una transacción.
 func (s *transactionService) Delete(ctx context.Context, id, userID uuid.UUID) error {
-	tx, err := s.txRepo.FindByID(ctx, id, userID)
+	_, err := s.txRepo.FindByID(ctx, id, userID)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return ErrTransactionNotFound
 		}
 		return fmt.Errorf("error buscando transacción: %w", err)
-	}
-
-	// REGLA CRÍTICA: source="order" no se puede eliminar manualmente
-	if tx.Source == domain.TransactionSourceOrder {
-		return ErrTransactionNotEditable
 	}
 
 	return s.txRepo.Delete(ctx, id, userID)

@@ -154,12 +154,19 @@ func (r *orderRepository) FindAll(ctx context.Context, userID uuid.UUID, params 
 }
 
 // UpdateStatus cambia el estado del encargo.
-// Si newStatus == "entregado", también crea la Transaction de ingreso en la misma TX.
+// Elimina transacciones previas asociadas (para evitar duplicados) y si newStatus == "entregado", crea la nueva.
 func (r *orderRepository) UpdateStatus(ctx context.Context, order *domain.Order, newStatus domain.OrderStatus, transaction *domain.Transaction) error {
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		// Actualizar estado del encargo
 		if err := tx.Model(order).Update("estado", string(newStatus)).Error; err != nil {
 			return fmt.Errorf("error actualizando estado: %w", err)
+		}
+
+		// Eliminar cualquier transacción previa asociada a este encargo
+		// Esto evita duplicados si el encargo pasa a 'entregado' múltiples veces,
+		// o elimina el ingreso fantasma si pasa de 'entregado' a 'pendiente'.
+		if err := tx.Where("order_id = ?", order.ID).Delete(&domain.Transaction{}).Error; err != nil {
+			return fmt.Errorf("error limpiando transacciones previas: %w", err)
 		}
 
 		// Si se entrega → crear la transacción de ingreso automática
@@ -178,18 +185,25 @@ func (r *orderRepository) UpdateMetadata(ctx context.Context, order *domain.Orde
 	return r.db.WithContext(ctx).Save(order).Error
 }
 
-// Delete hace soft delete verificando que pertenezca al usuario.
+// Delete hace soft delete verificando que pertenezca al usuario, e incluye transacciones.
 func (r *orderRepository) Delete(ctx context.Context, id, userID uuid.UUID) error {
-	result := r.db.WithContext(ctx).
-		Where("id = ? AND user_id = ?", id, userID).
-		Delete(&domain.Order{})
-	if result.Error != nil {
-		return result.Error
-	}
-	if result.RowsAffected == 0 {
-		return gorm.ErrRecordNotFound
-	}
-	return nil
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		// Soft delete al encargo
+		result := tx.Where("id = ? AND user_id = ?", id, userID).Delete(&domain.Order{})
+		if result.Error != nil {
+			return result.Error
+		}
+		if result.RowsAffected == 0 {
+			return gorm.ErrRecordNotFound
+		}
+
+		// Soft delete a las transacciones asociadas (evita ingresos fantasma)
+		if err := tx.Where("order_id = ?", id).Delete(&domain.Transaction{}).Error; err != nil {
+			return fmt.Errorf("error eliminando transacciones asociadas: %w", err)
+		}
+
+		return nil
+	})
 }
 
 // RestoreStock devuelve el stock de los materiales al cancelar un encargo.

@@ -235,8 +235,24 @@ func (s *materialService) RegisterPurchase(ctx context.Context, materialID, user
 	material.StockActual = stockNuevo
 	material.CostoUnitario = nuevoCosto
 
-	// Persistir ambas operaciones en una transacción atómica
-	if err := s.materialRepo.CreatePurchase(ctx, purchase, material); err != nil {
+	// 4. Crear la transacción financiera para reflejar el gasto automáticamente en Finanzas
+	// Usamos TransactionSourceManual para no romper el esquema DB y permitir que el usuario la elimine/edite si cometió un error
+	txDescripcion := fmt.Sprintf("Compra de inventario: %.2f %s de %s", input.Cantidad, material.Unidad, material.Nombre)
+	if input.Notas != nil && *input.Notas != "" {
+		txDescripcion += fmt.Sprintf(" | %s", *input.Notas)
+	}
+
+	finTx := &domain.Transaction{
+		Tipo:        domain.TransactionTypeGasto,
+		Monto:       precioTotal,
+		Descripcion: txDescripcion,
+		Fecha:       input.Fecha,
+		Source:      domain.TransactionSourceManual,
+		UserID:      userID,
+	}
+
+	// Persistir ambas operaciones (y la transacción) en una transacción atómica
+	if err := s.materialRepo.CreatePurchase(ctx, purchase, material, finTx); err != nil {
 		return nil, nil, fmt.Errorf("error registrando compra: %w", err)
 	}
 
